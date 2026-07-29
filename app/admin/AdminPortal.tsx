@@ -204,26 +204,26 @@ export function AdminPortal({ user }: AdminPortalProps) {
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a className="active" href="#overview">
+          <a className="active" href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
           </a>
-          <a href="#datasets">
+          <a href="/admin/stocks">
             <span className="nav-glyph">▦</span>
-            Datasets
-            <em>{datasets.length}</em>
+            Stock datasets
+            <em>{datasets.filter((dataset) => dataset.kind === "stock").length}</em>
           </a>
-          <a href="#validation">
+          <a href="/admin#validation">
             <span className="nav-glyph">✓</span>
             Validation
             {totals.warnings > 0 && <i>{totals.warnings}</i>}
           </a>
           <p>GAME SYSTEM</p>
-          <a href="#game-library">
+          <a href="/admin#game-library">
             <span className="nav-glyph">◇</span>
             Game library
           </a>
-          <a href="#activity">
+          <a href="/admin#activity">
             <span className="nav-glyph">↻</span>
             Reuse history
           </a>
