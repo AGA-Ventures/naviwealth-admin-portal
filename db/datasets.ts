@@ -176,6 +176,11 @@ export async function listDatasets() {
   return result.results.map(mapDataset);
 }
 
+export async function getDataset(id: number) {
+  await ensureDatasetSchema();
+  return mapDataset(await findDatasetRow(id));
+}
+
 export async function createDataset(input: DatasetInput) {
   await ensureDatasetSchema();
   const d1 = getD1();

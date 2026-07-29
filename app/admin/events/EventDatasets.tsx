@@ -563,6 +563,13 @@ function EventSetCard({
 }) {
   return (
     <article className="stock-set-card event-set-card">
+      <a
+        className="event-card-detail-link"
+        href={`/admin/events/${dataset.id}`}
+        aria-label={`View details for ${dataset.name}`}
+      >
+        <span className="sr-only">View {dataset.name} details</span>
+      </a>
       <div className="stock-set-card-top">
         <span className="dataset-kind-icon event">EV</span>
         <span className={`status-label ${dataset.status}`}>

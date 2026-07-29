@@ -2,6 +2,7 @@ import {
   DatasetStoreError,
   deleteDataset,
   duplicateDataset,
+  getDataset,
   reuseDataset,
   updateDataset,
 } from "@/db/datasets";
@@ -13,6 +14,19 @@ import {
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+export async function GET(request: Request, context: RouteContext) {
+  const user = await getDatasetRequestUser(request);
+  if (!user) return unauthorizedResponse();
+
+  try {
+    const id = await datasetId(context);
+    const dataset = await getDataset(id);
+    return Response.json({ dataset });
+  } catch (error) {
+    return storeErrorResponse(error);
+  }
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
