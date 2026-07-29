@@ -1,16 +1,19 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const marketBars = [36, 54, 42, 68, 58, 78, 64, 88, 72, 96, 82, 100];
 
 export default function Home() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Demo mode: your authentication service can be connected here.");
+    setMessage("Opening the dataset control center…");
+    router.push("/admin");
   }
 
   return (
@@ -42,22 +45,22 @@ export default function Home() {
           </div>
 
           <div className="story-copy">
-            <p className="eyebrow">YOUR FINANCIAL JOURNEY CONTINUES</p>
+            <p className="eyebrow">NAViWEALTH CONTROL CENTER</p>
             <h1 id="story-title">
-              Don&apos;t just learn finance.
-              <span>Live it.</span>
+              Shape the simulation.
+              <span>Control every outcome.</span>
             </h1>
             <p className="story-description">
-              Make the next move in your wealth story. Your portfolio, career,
-              and financial freedom are waiting.
+              Curate reusable stock and event datasets, validate every package,
+              and keep each game running from one trusted source.
             </p>
           </div>
 
           <div className="market-card">
             <div className="market-card-header">
               <div>
-                <p>SIMULATION SNAPSHOT</p>
-                <span>Live market conditions</span>
+                <p>DATASET SNAPSHOT</p>
+                <span>Current content library</span>
               </div>
               <div className="live-badge">
                 <span className="status-dot" />
@@ -67,16 +70,16 @@ export default function Home() {
 
             <div className="market-stats">
               <div>
-                <span>Market volatility</span>
-                <strong className="negative">+12.4%</strong>
+                <span>Active events</span>
+                <strong className="negative">91</strong>
               </div>
               <div>
-                <span>Inflation rate</span>
-                <strong className="warning">3.2%</strong>
+                <span>Stock records</span>
+                <strong className="warning">8</strong>
               </div>
               <div>
-                <span>Active players</span>
-                <strong className="cyan">12,405</strong>
+                <span>Reusable sets</span>
+                <strong className="cyan">8 / 30</strong>
               </div>
             </div>
 
@@ -97,8 +100,8 @@ export default function Home() {
               <span>JL</span>
             </div>
             <p>
-              <strong>12,000+ players</strong>
-              building smarter money habits
+              <strong>Reusable by design</strong>
+              one dataset library across every game
             </p>
           </div>
         </section>
@@ -111,13 +114,13 @@ export default function Home() {
                 <i />
               </span>
               <div>
-                <p className="eyebrow">PLAYER ACCESS</p>
+                <p className="eyebrow">ADMIN ACCESS</p>
                 <h2 id="login-title">Welcome back</h2>
               </div>
             </div>
 
             <p className="login-intro">
-              Sign in to continue building your financial future.
+              Sign in to manage reusable game datasets and validation.
             </p>
 
             <form onSubmit={handleSubmit}>
@@ -165,7 +168,7 @@ export default function Home() {
               </div>
 
               <button className="submit-button" type="submit">
-                <span>Enter the simulation</span>
+                <span>Open admin portal</span>
                 <span aria-hidden="true">→</span>
               </button>
 
@@ -175,11 +178,11 @@ export default function Home() {
             </form>
 
             <div className="divider">
-              <span>New to NaviWealth?</span>
+              <span>Need a new administrator?</span>
             </div>
 
             <a className="secondary-button" href="#create-account">
-              Create your player profile
+              Request workspace access
             </a>
 
             <p className="legal-copy">
@@ -190,7 +193,7 @@ export default function Home() {
 
           <div className="secure-note">
             <span className="lock" aria-hidden="true" />
-            <span>256-bit encrypted player access</span>
+            <span>Protected administrator access</span>
           </div>
         </section>
       </div>
