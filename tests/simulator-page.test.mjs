@@ -34,6 +34,7 @@ test("provides a data-backed simulator with configurable session inputs", async 
   );
 
   assert.match(simulator, /fetch\("\/api\/datasets"/);
+  assert.match(simulator, /fetch\("\/api\/game-settings"/);
   assert.match(simulator, /action: "reuse"/);
   assert.match(simulator, /Stock dataset/);
   assert.match(simulator, /Event dataset/);

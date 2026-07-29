@@ -19,7 +19,7 @@ export async function getDatasetRequestUser(request: Request) {
 
 export function unauthorizedResponse() {
   return Response.json(
-    { error: "Sign in is required to manage datasets." },
+    { error: "Sign in is required to manage this workspace." },
     { status: 401 },
   );
 }

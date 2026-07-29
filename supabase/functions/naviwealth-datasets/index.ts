@@ -18,6 +18,27 @@ type DatasetInput = {
   memberIds?: unknown;
 };
 
+type AdminUserRole = "owner" | "admin" | "facilitator" | "viewer";
+type AdminUserStatus = "active" | "invited" | "suspended";
+type AdminUserInput = {
+  name?: unknown;
+  email?: unknown;
+  role?: unknown;
+  status?: unknown;
+};
+type GameSettingsInput = {
+  defaultPlayers?: unknown;
+  defaultRounds?: unknown;
+  startingBalance?: unknown;
+  turnSeconds?: unknown;
+  marketVolatility?: unknown;
+  autoRotateEvents?: unknown;
+  allowNegativeBalance?: unknown;
+  enableLoans?: unknown;
+  requireFacilitator?: unknown;
+  updatedBy?: unknown;
+};
+
 type DatasetRow = {
   id: number;
   name: string;
@@ -33,10 +54,36 @@ type DatasetRow = {
   updated_at: string;
 };
 
+type AdminUserRow = {
+  id: number;
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  status: AdminUserStatus;
+  last_active_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type GameSettingsRow = {
+  id: number;
+  default_players: number;
+  default_rounds: number;
+  starting_balance: number;
+  turn_seconds: number;
+  market_volatility: "low" | "balanced" | "high";
+  auto_rotate_events: boolean;
+  allow_negative_balance: boolean;
+  enable_loans: boolean;
+  require_facilitator: boolean;
+  updated_by: string;
+  updated_at: string;
+};
+
 type RequestBody = {
   operation?: unknown;
   id?: unknown;
-  input?: DatasetInput;
+  input?: DatasetInput | AdminUserInput | GameSettingsInput;
 };
 
 class GatewayError extends Error {
@@ -70,13 +117,24 @@ Deno.serve(async (request) => {
         });
       case "create":
         return json(
-          { dataset: mapDataset(await createDataset(client, body.input ?? {})) },
+          {
+            dataset: mapDataset(
+              await createDataset(
+                client,
+                (body.input ?? {}) as DatasetInput,
+              ),
+            ),
+          },
           201,
         );
       case "update":
         return json({
           dataset: mapDataset(
-            await updateDataset(client, id(body.id), body.input ?? {}),
+            await updateDataset(
+              client,
+              id(body.id),
+              (body.input ?? {}) as DatasetInput,
+            ),
           ),
         });
       case "delete":
@@ -95,8 +153,45 @@ Deno.serve(async (request) => {
         return json({
           dataset: mapDataset(await reuseDataset(client, id(body.id))),
         });
+      case "listAdminUsers":
+        return json({ users: await listAdminUsers(client) });
+      case "createAdminUser":
+        return json(
+          {
+            user: mapAdminUser(
+              await createAdminUser(
+                client,
+                (body.input ?? {}) as AdminUserInput,
+              ),
+            ),
+          },
+          201,
+        );
+      case "updateAdminUser":
+        return json({
+          user: mapAdminUser(
+            await updateAdminUser(
+              client,
+              id(body.id),
+              (body.input ?? {}) as AdminUserInput,
+            ),
+          ),
+        });
+      case "getGameSettings":
+        return json({
+          settings: mapGameSettings(await getGameSettings(client)),
+        });
+      case "updateGameSettings":
+        return json({
+          settings: mapGameSettings(
+            await updateGameSettings(
+              client,
+              (body.input ?? {}) as GameSettingsInput,
+            ),
+          ),
+        });
       default:
-        throw new GatewayError("Unsupported dataset operation.", 400);
+        throw new GatewayError("Unsupported gateway operation.", 400);
     }
   } catch (error) {
     if (error instanceof GatewayError) {
@@ -268,6 +363,153 @@ async function assertCapacity(client: SupabaseClient) {
   }
 }
 
+async function listAdminUsers(client: SupabaseClient) {
+  const { data, error } = await client
+    .from("admin_users")
+    .select("*")
+    .order("status", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) throw databaseError(error);
+  return (data as AdminUserRow[]).map(mapAdminUser);
+}
+
+async function findAdminUser(client: SupabaseClient, userId: number) {
+  const { data, error } = await client
+    .from("admin_users")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!data) throw new GatewayError("Admin user not found.", 404);
+  return data as AdminUserRow;
+}
+
+async function createAdminUser(
+  client: SupabaseClient,
+  input: AdminUserInput,
+) {
+  const { data, error } = await client
+    .from("admin_users")
+    .insert({
+      name: cleanAdminUserName(input.name),
+      email: cleanEmail(input.email),
+      role: parseAdminUserRole(input.role ?? "facilitator"),
+      status: parseAdminUserStatus(input.status ?? "invited"),
+    })
+    .select("*")
+    .single();
+  if (error) throw databaseError(error);
+  return data as AdminUserRow;
+}
+
+async function updateAdminUser(
+  client: SupabaseClient,
+  userId: number,
+  input: AdminUserInput,
+) {
+  const current = await findAdminUser(client, userId);
+  const { data, error } = await client
+    .from("admin_users")
+    .update({
+      name:
+        input.name === undefined
+          ? current.name
+          : cleanAdminUserName(input.name),
+      email:
+        input.email === undefined ? current.email : cleanEmail(input.email),
+      role:
+        input.role === undefined
+          ? current.role
+          : parseAdminUserRole(input.role),
+      status:
+        input.status === undefined
+          ? current.status
+          : parseAdminUserStatus(input.status),
+    })
+    .eq("id", userId)
+    .select("*")
+    .single();
+  if (error) throw databaseError(error);
+  return data as AdminUserRow;
+}
+
+async function getGameSettings(client: SupabaseClient) {
+  const { data, error } = await client
+    .from("game_settings")
+    .select("*")
+    .eq("id", 1)
+    .single();
+  if (error) throw databaseError(error);
+  return data as GameSettingsRow;
+}
+
+async function updateGameSettings(
+  client: SupabaseClient,
+  input: GameSettingsInput,
+) {
+  const current = await getGameSettings(client);
+  const { data, error } = await client
+    .from("game_settings")
+    .update({
+      default_players:
+        input.defaultPlayers === undefined
+          ? current.default_players
+          : boundedInteger(input.defaultPlayers, "Default players", 2, 12),
+      default_rounds:
+        input.defaultRounds === undefined
+          ? current.default_rounds
+          : boundedInteger(input.defaultRounds, "Default rounds", 4, 40),
+      starting_balance:
+        input.startingBalance === undefined
+          ? current.starting_balance
+          : boundedInteger(
+              input.startingBalance,
+              "Starting balance",
+              1_000,
+              1_000_000,
+            ),
+      turn_seconds:
+        input.turnSeconds === undefined
+          ? current.turn_seconds
+          : boundedInteger(input.turnSeconds, "Turn duration", 15, 600),
+      market_volatility:
+        input.marketVolatility === undefined
+          ? current.market_volatility
+          : parseMarketVolatility(input.marketVolatility),
+      auto_rotate_events:
+        input.autoRotateEvents === undefined
+          ? current.auto_rotate_events
+          : parseBoolean(input.autoRotateEvents, "Auto-rotate events"),
+      allow_negative_balance:
+        input.allowNegativeBalance === undefined
+          ? current.allow_negative_balance
+          : parseBoolean(
+              input.allowNegativeBalance,
+              "Allow negative balance",
+            ),
+      enable_loans:
+        input.enableLoans === undefined
+          ? current.enable_loans
+          : parseBoolean(input.enableLoans, "Enable loans"),
+      require_facilitator:
+        input.requireFacilitator === undefined
+          ? current.require_facilitator
+          : parseBoolean(
+              input.requireFacilitator,
+              "Require facilitator",
+            ),
+      updated_by:
+        input.updatedBy === undefined
+          ? current.updated_by
+          : cleanUpdatedBy(input.updatedBy),
+    })
+    .eq("id", 1)
+    .select("*")
+    .single();
+  if (error) throw databaseError(error);
+  return data as GameSettingsRow;
+}
+
 function mapDataset(row: DatasetRow) {
   return {
     id: row.id,
@@ -285,12 +527,124 @@ function mapDataset(row: DatasetRow) {
   };
 }
 
+function mapAdminUser(row: AdminUserRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    lastActiveAt: row.last_active_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapGameSettings(row: GameSettingsRow) {
+  return {
+    defaultPlayers: row.default_players,
+    defaultRounds: row.default_rounds,
+    startingBalance: row.starting_balance,
+    turnSeconds: row.turn_seconds,
+    marketVolatility: row.market_volatility,
+    autoRotateEvents: row.auto_rotate_events,
+    allowNegativeBalance: row.allow_negative_balance,
+    enableLoans: row.enable_loans,
+    requireFacilitator: row.require_facilitator,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+  };
+}
+
 function id(value: unknown) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new GatewayError("Invalid dataset ID.", 400);
   }
   return parsed;
+}
+
+function cleanAdminUserName(value: unknown) {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!name) throw new GatewayError("User name is required.", 400);
+  if (name.length > 80) {
+    throw new GatewayError("User name must be 80 characters or fewer.", 400);
+  }
+  return name;
+}
+
+function cleanEmail(value: unknown) {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    throw new GatewayError("Enter a valid email address.", 400);
+  }
+  return email;
+}
+
+function parseAdminUserRole(value: unknown): AdminUserRole {
+  if (
+    value === "owner" ||
+    value === "admin" ||
+    value === "facilitator" ||
+    value === "viewer"
+  ) {
+    return value;
+  }
+  throw new GatewayError("Select a valid user role.", 400);
+}
+
+function parseAdminUserStatus(value: unknown): AdminUserStatus {
+  if (
+    value === "active" ||
+    value === "invited" ||
+    value === "suspended"
+  ) {
+    return value;
+  }
+  throw new GatewayError("Select a valid user status.", 400);
+}
+
+function boundedInteger(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < minimum || number > maximum) {
+    throw new GatewayError(
+      `${label} must be between ${minimum} and ${maximum}.`,
+      400,
+    );
+  }
+  return number;
+}
+
+function parseMarketVolatility(
+  value: unknown,
+): "low" | "balanced" | "high" {
+  if (value === "low" || value === "balanced" || value === "high") {
+    return value;
+  }
+  throw new GatewayError("Select a valid market volatility.", 400);
+}
+
+function parseBoolean(value: unknown, label: string) {
+  if (typeof value !== "boolean") {
+    throw new GatewayError(`${label} must be true or false.`, 400);
+  }
+  return value;
+}
+
+function cleanUpdatedBy(value: unknown) {
+  const updatedBy = typeof value === "string" ? value.trim() : "";
+  if (!updatedBy || updatedBy.length > 254) {
+    throw new GatewayError("Settings editor is invalid.", 400);
+  }
+  return updatedBy;
 }
 
 function cleanName(value: unknown) {
@@ -363,10 +717,7 @@ function availableCopyName(sourceName: string, usedNames: Set<string>) {
 
 function databaseError(error: { code?: string; message?: string }) {
   if (error.code === "23505") {
-    return new GatewayError(
-      "A dataset with this name already exists.",
-      409,
-    );
+    return new GatewayError("This value is already in use.", 409);
   }
   return new GatewayError("The dataset could not be saved.", 500);
 }

@@ -22,6 +22,13 @@ type Dataset = {
 
 type RiskProfile = "conservative" | "balanced" | "aggressive";
 
+type SimulatorDefaults = {
+  players: number;
+  rounds: number;
+  startingBalance: number;
+  risk: RiskProfile;
+};
+
 type SimulationResult = {
   id: string;
   duration: number;
@@ -51,6 +58,13 @@ const riskLabels: Record<RiskProfile, string> = {
   aggressive: "Aggressive",
 };
 
+const fallbackDefaults: SimulatorDefaults = {
+  players: 4,
+  rounds: 12,
+  startingBalance: 25000,
+  risk: "balanced",
+};
+
 export function GameSimulator({ user }: GameSimulatorProps) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +76,8 @@ export function GameSimulator({ user }: GameSimulatorProps) {
   const [rounds, setRounds] = useState(12);
   const [startingBalance, setStartingBalance] = useState(25000);
   const [risk, setRisk] = useState<RiskProfile>("balanced");
+  const [gameDefaults, setGameDefaults] =
+    useState<SimulatorDefaults>(fallbackDefaults);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<SimulationResult | null>(null);
@@ -71,14 +87,22 @@ export function GameSimulator({ user }: GameSimulatorProps) {
 
     async function load() {
       try {
-        const response = await fetch("/api/datasets", { cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to load simulator datasets.");
+        const [datasetResponse, settingsResponse] = await Promise.all([
+          fetch("/api/datasets", { cache: "no-store" }),
+          fetch("/api/game-settings", { cache: "no-store" }),
+        ]);
+        const [datasetPayload, settingsPayload] = await Promise.all([
+          datasetResponse.json(),
+          settingsResponse.json(),
+        ]);
+        if (!datasetResponse.ok) {
+          throw new Error(
+            datasetPayload.error ?? "Unable to load simulator datasets.",
+          );
         }
         if (cancelled) return;
 
-        const loaded = payload.datasets as Dataset[];
+        const loaded = datasetPayload.datasets as Dataset[];
         setDatasets(loaded);
         setStockId(
           loaded.find(
@@ -86,6 +110,25 @@ export function GameSimulator({ user }: GameSimulatorProps) {
               dataset.kind === "stock" && dataset.status === "ready",
           )?.id ?? null,
         );
+
+        if (settingsResponse.ok) {
+          const defaults: SimulatorDefaults = {
+            players: settingsPayload.settings.defaultPlayers,
+            rounds: settingsPayload.settings.defaultRounds,
+            startingBalance: settingsPayload.settings.startingBalance,
+            risk:
+              settingsPayload.settings.marketVolatility === "low"
+                ? "conservative"
+                : settingsPayload.settings.marketVolatility === "high"
+                  ? "aggressive"
+                  : "balanced",
+          };
+          setGameDefaults(defaults);
+          setPlayers(defaults.players);
+          setRounds(defaults.rounds);
+          setStartingBalance(defaults.startingBalance);
+          setRisk(defaults.risk);
+        }
         setEventId(
           loaded.find(
             (dataset) =>
@@ -203,12 +246,12 @@ export function GameSimulator({ user }: GameSimulatorProps) {
   }
 
   function reset() {
-    setPlayers(4);
-    setRounds(12);
-    setStartingBalance(25000);
-    setRisk("balanced");
+    setPlayers(gameDefaults.players);
+    setRounds(gameDefaults.rounds);
+    setStartingBalance(gameDefaults.startingBalance);
+    setRisk(gameDefaults.risk);
     setResult(null);
-    setMessage("Simulator reset to the recommended configuration.");
+    setMessage("Simulator reset to the saved game settings.");
   }
 
   return (
@@ -245,13 +288,13 @@ export function GameSimulator({ user }: GameSimulatorProps) {
             <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
           </a>
           <p>GAME SYSTEM</p>
-          <a href="/admin#game-library">
-            <span className="nav-glyph">◇</span>
-            Game library
+          <a href="/admin/users">
+            <span className="nav-glyph">◎</span>
+            User control
           </a>
-          <a href="/admin#activity">
-            <span className="nav-glyph">↻</span>
-            Reuse history
+          <a href="/admin/game-settings">
+            <span className="nav-glyph">⚙</span>
+            Game settings
           </a>
         </nav>
 

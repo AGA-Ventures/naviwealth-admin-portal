@@ -225,13 +225,13 @@ export function StockDatasets({
             <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
           </a>
           <p>GAME SYSTEM</p>
-          <a href="/admin#game-library">
-            <span className="nav-glyph">◇</span>
-            Game library
+          <a href="/admin/users">
+            <span className="nav-glyph">◎</span>
+            User control
           </a>
-          <a href="/admin#activity">
-            <span className="nav-glyph">↻</span>
-            Reuse history
+          <a href="/admin/game-settings">
+            <span className="nav-glyph">⚙</span>
+            Game settings
           </a>
         </nav>
 
