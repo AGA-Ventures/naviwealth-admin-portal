@@ -229,6 +229,10 @@ export function EventDatasets({
             <span className="nav-glyph">⌂</span>
             Overview
           </a>
+          <a href="/admin/simulator">
+            <span className="nav-glyph">▶</span>
+            Simulator
+          </a>
           <a href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets

@@ -210,6 +210,10 @@ export function StockDatasets({
             <span className="nav-glyph">⌂</span>
             Overview
           </a>
+          <a href="/admin/simulator">
+            <span className="nav-glyph">▶</span>
+            Simulator
+          </a>
           <a className="active" href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
