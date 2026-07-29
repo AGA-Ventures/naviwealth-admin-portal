@@ -552,7 +552,14 @@ function StockSetCard({
     .filter(Boolean);
 
   return (
-    <article className="stock-set-card">
+    <article className="stock-set-card stock-set-detail-card">
+      <a
+        className="stock-card-detail-link"
+        href={`/admin/stocks/${dataset.id}`}
+        aria-label={`View details for ${dataset.name}`}
+      >
+        <span className="sr-only">View {dataset.name} details</span>
+      </a>
       <div className="stock-set-card-top">
         <span className="dataset-kind-icon stock">ST</span>
         <span className={`status-label ${dataset.status}`}>

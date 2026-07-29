@@ -1,78 +1,62 @@
-# Event Membership Popup — Design QA
+# Stock Set Details — Design QA
 
-## Evidence
+## Comparison target
 
-- Source visual truth: `design-qa-source.png`
-- Closed implementation: `design-qa-implementation-closed.png`
-- Open implementation: `design-qa-implementation.png`
-- Full-view comparison: `design-qa-baseline-comparison.png`
-- Focused popup comparison: `design-qa-popup-comparison.png`
-- Browser route: `/admin/events/4`
-- Browser viewport: 1280 × 720 CSS px at density 1
-- Source pixels: 1265 × 712 (viewport minus the visible browser scrollbar)
-- Closed implementation pixels: 1265 × 712
-- Open implementation pixels: 1280 × 720 because the modal scroll lock removes the page scrollbar
-- Density normalization: the open-modal capture was normalized to 1265 × 712 only for the side-by-side comparison. Original evidence remains in `design-qa-implementation.png`.
-
-## State
-
-The source shows Event Set 4 with its membership table closed. The implementation was compared in two states:
-
-1. Closed, aligned to the same top-of-page viewport as the source.
-2. Event #76 open as the new focused popup state.
-
-The source does not prescribe a popup layout, so the open state was evaluated as an intentional extension of the visible NaviWealth component language.
+- Source visual truth: `design-qa-stock-detail-source.png` (the accepted Event Set detail layout) and `design-qa-stock-library-source.png` (the annotated Stock Dataset design language and content).
+- Implementation: `design-qa-stock-detail.png`.
+- Viewport: 1954 × 1273 CSS pixels.
+- Source and implementation screenshots: 1954 × 1273 pixels.
+- Device scale factor: 2; the in-app browser normalized both captures to the same CSS-sized PNG, so no additional density conversion was required.
+- State: Stock Set 4 loaded, configuration dialog closed, desktop layout.
 
 ## Full-view comparison evidence
 
-The baseline comparison preserves the source layout, sidebar, hero, metrics, membership table, readiness panel, typography hierarchy, spacing, and dark navy palette. The new row affordance remains visually quiet until hover or keyboard focus, so it does not change the default composition.
+- Evidence: `design-qa-stock-detail-comparison.png`.
+- The Stock Set page preserves the accepted detail hierarchy: persistent sidebar, restrained top bar, breadcrumb, icon/title/action hero, four metrics, large membership table, readiness panel, and reuse-history panel.
+- The cyan stock accent intentionally replaces the event page’s purple accent while retaining the same semantic hierarchy and component proportions.
+- No content overlaps, clipped controls, unexpected wrapping, or horizontal overflow are visible at the target viewport.
 
-## Focused region comparison evidence
+## Focused comparison evidence
 
-The popup reuses the source screen’s panel borders, compact monospace labels, cyan/purple/green/yellow semantic colors, metric-card structure, radii, and restrained glow. At 730px maximum width it keeps a clear hierarchy without obscuring the user’s current context.
-
-Focused-region review was necessary because the table text and popup metadata are too small to judge reliably in the full-view comparison.
-
-## Required fidelity surfaces
-
-- Fonts and typography: Passed. Existing Geist sans/mono hierarchy, compact labels, numeric emphasis, line height, and weights are retained.
-- Spacing and layout rhythm: Passed. Modal padding, 4-column metadata, 2-column effect and behavior sections, borders, radii, and vertical gaps follow the source density.
-- Colors and visual tokens: Passed. Existing NaviWealth navy surfaces and category colors map consistently to event types and modes.
-- Image quality and asset fidelity: Passed. The source contains no event imagery or new raster asset requirement; the existing logo and screen chrome remain unchanged.
-- Copy and content: Passed. Every Event Set 4 member has distinct, readable event details covering effect, eligibility, decision, cadence, and engine resolution.
-
-## Interaction and accessibility checks
-
-- Mouse activation tested on event #76.
-- Keyboard Enter activation tested on event #79.
-- A second distinct record tested on event #91.
-- Escape dismissal tested.
-- Close button dismissal tested.
-- Focus returns to the triggering membership row after dismissal.
-- Modal focus cycles between its available actions.
-- Fresh preview logs were checked after the final interaction sequence; all page and data requests completed successfully and no popup-triggered console errors were reported.
+- Evidence: `design-qa-stock-detail-focused-comparison.png`.
+- The hero, metrics, table header, table rows, readiness card, and reuse card retain the source screen’s padding, radii, borders, density, and alignment.
+- Stock-specific price ranges and sequence-change badges remain readable without changing the table’s overall rhythm.
 
 ## Findings
 
-No actionable P0, P1, or P2 visual, interaction, responsive, or accessibility issues remain.
+- No actionable P0, P1, or P2 differences remain.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Geist Sans and Geist Mono, weights, hierarchy, line height, tracking, and numeric emphasis match the existing portal.
+- Spacing and layout rhythm: sidebar width, main-content inset, hero spacing, four-card grid, table density, 15px column gap, borders, and radii match the accepted detail screen.
+- Colors and visual tokens: existing navy surfaces and line tokens are preserved; cyan is used consistently for the stock context, with green/red reserved for positive/negative moves and yellow for usage.
+- Image quality and asset fidelity: no new raster imagery was required; the screen uses the portal’s existing logo and component assets without placeholders.
+- Copy and content: labels describe the stock package accurately, including 360 ticks, 10-second cadence, MYR price ranges, readiness, and reuse history.
+
+## Interaction checks
+
+- Selecting Stock Set 4 from the library navigates to `/admin/stocks/8`.
+- Configure set opens the existing stock-package editor and Close dialog dismisses it.
+- Duplicate, Use in game, Copy symbols, breadcrumb, back link, and sidebar routes are present and connected.
+- The browser console reported no errors.
+- The production build completed successfully.
+- All 11 automated tests pass.
 
 ## Comparison history
 
-- Initial baseline evidence was captured at a different scroll position after closing the modal. This was a comparison setup mismatch, not an implementation defect.
-- The page was reopened at the source viewport and recaptured. The aligned post-fix evidence is `design-qa-baseline-comparison.png`.
-- Focus return and modal Tab containment were added before the final capture, then mouse, keyboard, Escape, and multiple-record checks were repeated successfully.
-
-## Follow-up polish
-
-- P3: If a canonical event-content service is added later, replace the authored local event records with those source fields while keeping this presentation component.
+- Initial implementation: no P0/P1/P2 visual mismatch was identified in the first normalized side-by-side comparison, so no design-fix iteration was required.
 
 ## Implementation checklist
 
-- [x] Make every membership row clickable and keyboard accessible.
-- [x] Present distinct event details for all Event Set 4 records.
-- [x] Support backdrop, button, and Escape dismissal.
-- [x] Return focus to the selected row.
-- [x] Preserve the original closed-page layout.
-- [x] Verify the final open and closed states in the browser.
+- [x] Card-level navigation to a dedicated Stock Set route.
+- [x] Stock-specific hero, metrics, membership table, readiness, and usage.
+- [x] Working package configuration and dataset actions.
+- [x] Responsive reuse of the existing detail-page layout.
+- [x] Browser and automated verification.
+
+## Follow-up polish
+
+- No blocking or recommended P3 polish remains for this scope.
 
 final result: passed

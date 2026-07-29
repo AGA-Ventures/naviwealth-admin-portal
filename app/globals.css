@@ -3145,6 +3145,36 @@ article.green .event-type-track i {
   cursor: default;
 }
 
+.stock-set-detail-card {
+  position: relative;
+  cursor: pointer;
+}
+
+.stock-card-detail-link {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.stock-set-detail-card .stock-set-card-top,
+.stock-set-detail-card .stock-set-actions {
+  position: relative;
+  z-index: 2;
+}
+
+.stock-set-detail-card .stock-set-card-top {
+  pointer-events: none;
+}
+
+.stock-set-detail-card .stock-set-card-top .row-menu {
+  pointer-events: auto;
+}
+
+.stock-set-detail-card .stock-set-actions {
+  cursor: default;
+}
+
 .detail-side-card {
   margin-top: auto;
   padding: 16px;
@@ -3667,6 +3697,127 @@ article.green .event-type-track i {
 
 .detail-skeleton > span:last-child {
   height: 420px;
+}
+
+/* Stock set details */
+
+.stock-detail-page .detail-side-card {
+  border-color: rgba(0, 211, 243, 0.15);
+  background:
+    linear-gradient(145deg, rgba(0, 184, 219, 0.07), transparent),
+    rgba(15, 23, 43, 0.5);
+}
+
+.stock-detail-page .detail-side-card > span,
+.stock-detail-page .detail-back-link:hover,
+.stock-detail-page .detail-usage-stat strong {
+  color: var(--cyan);
+}
+
+.stock-detail-page .event-detail-actions button:hover:not(:disabled),
+.stock-detail-page .membership-panel .stock-section-heading > button:hover {
+  border-color: var(--cyan-deep);
+  color: white;
+}
+
+.stock-detail-page .event-detail-actions button.event-primary {
+  border-color: var(--cyan-deep);
+  color: #02101a;
+  background: var(--cyan);
+  box-shadow: 0 0 20px rgba(0, 211, 243, 0.13);
+}
+
+.stock-detail-page .event-detail-actions button.event-primary:hover:not(:disabled) {
+  background: #38e4ff;
+}
+
+.stock-membership-table {
+  min-width: 860px;
+}
+
+.stock-membership-table th:nth-child(2) {
+  width: 18%;
+}
+
+.stock-membership-table td {
+  height: 62px;
+}
+
+.stock-membership-symbol {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.stock-membership-symbol > i {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 184, 219, 0.2);
+  border-radius: 7px;
+  color: var(--cyan);
+  background: rgba(0, 184, 219, 0.08);
+  font-size: 7px;
+  font-style: normal;
+}
+
+.stock-membership-symbol > span,
+.stock-tick-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stock-membership-symbol strong,
+.stock-tick-coverage strong {
+  color: var(--copy);
+  font-size: 9px;
+}
+
+.stock-membership-symbol small,
+.stock-tick-coverage small {
+  color: #45536a;
+  font-size: 7px;
+}
+
+.stock-price-range {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.stock-price-range strong {
+  color: #8090a8;
+  font-size: 7px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stock-price-range i {
+  color: #45536a;
+  font-style: normal;
+}
+
+.stock-sequence-change {
+  padding: 5px 7px;
+  display: inline-flex;
+  border: 1px solid;
+  border-radius: 5px;
+  font-size: 7px;
+  font-weight: 650;
+}
+
+.stock-sequence-change.positive {
+  border-color: rgba(5, 223, 114, 0.15);
+  color: var(--green);
+  background: rgba(5, 223, 114, 0.05);
+}
+
+.stock-sequence-change.negative {
+  border-color: rgba(255, 100, 103, 0.15);
+  color: var(--red);
+  background: rgba(255, 100, 103, 0.05);
 }
 
 @media (max-width: 1180px) {
