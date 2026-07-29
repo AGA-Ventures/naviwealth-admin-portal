@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -26,11 +27,18 @@ type Dataset = {
 type StockRecord = {
   id: number;
   symbol: string;
+  fullName: string;
   reference: string;
   assetClass: string;
   ticks: number;
   firstPrice: number;
   lastPrice: number;
+  lowPrice: number;
+  highPrice: number;
+  volatility: "Low" | "Moderate" | "High";
+  riskProfile: string;
+  gameplayRole: string;
+  summary: string;
 };
 
 type DetailProps = {
@@ -42,74 +50,138 @@ const stockInventory: StockRecord[] = [
   {
     id: 1,
     symbol: "ETH",
+    fullName: "Ethereum",
     reference: "ETH",
     assetClass: "Digital asset",
     ticks: 360,
     firstPrice: 2200,
     lastPrice: 3688.22,
+    lowPrice: 1984.4,
+    highPrice: 3826.71,
+    volatility: "High",
+    riskProfile: "Speculative growth",
+    gameplayRole: "High-upside asset with sharp intragame price swings.",
+    summary:
+      "A volatile digital asset sequence that rewards timing and a higher tolerance for risk.",
   },
   {
     id: 2,
     symbol: "AAPL",
+    fullName: "Apple Inc.",
     reference: "AAPL",
     assetClass: "US equity",
     ticks: 360,
     firstPrice: 145,
     lastPrice: 119.52,
+    lowPrice: 112.84,
+    highPrice: 151.32,
+    volatility: "Moderate",
+    riskProfile: "Growth equity",
+    gameplayRole: "A familiar equity with a controlled downward scenario.",
+    summary:
+      "A large-cap technology equity sequence designed to test loss management and position sizing.",
   },
   {
     id: 3,
     symbol: "GOLD",
+    fullName: "Gold",
     reference: "GOLD",
     assetClass: "Commodity",
     ticks: 360,
     firstPrice: 1434.43,
     lastPrice: 4513.87,
+    lowPrice: 1398.12,
+    highPrice: 4628.55,
+    volatility: "High",
+    riskProfile: "Defensive momentum",
+    gameplayRole: "A strong upward commodity cycle with accelerating gains.",
+    summary:
+      "A defensive commodity scenario that develops into the set’s strongest sustained price trend.",
   },
   {
     id: 4,
     symbol: "NASDAQ",
+    fullName: "NASDAQ Composite",
     reference: "NASDAQ",
     assetClass: "Market index",
     ticks: 360,
     firstPrice: 12000,
     lastPrice: 13987.45,
+    lowPrice: 11742.8,
+    highPrice: 14210.32,
+    volatility: "Moderate",
+    riskProfile: "Diversified growth",
+    gameplayRole: "A broad technology-led index with steady appreciation.",
+    summary:
+      "A diversified market sequence that offers smoother growth than the individual high-risk assets.",
   },
   {
     id: 5,
     symbol: "NFT",
+    fullName: "NFT Market Index",
     reference: "NFT",
     assetClass: "Digital collectible",
     ticks: 360,
     firstPrice: 500,
     lastPrice: 1411.08,
+    lowPrice: 428.15,
+    highPrice: 1518.62,
+    volatility: "High",
+    riskProfile: "Alternative speculative",
+    gameplayRole: "A fast-moving alternative asset with large upside.",
+    summary:
+      "A highly speculative collectible-market sequence built around rapid sentiment shifts.",
   },
   {
     id: 6,
     symbol: "REIT",
+    fullName: "Property REIT Index",
     reference: "REIT",
     assetClass: "Property trust",
     ticks: 360,
     firstPrice: 280,
     lastPrice: 306.42,
+    lowPrice: 268.9,
+    highPrice: 315.76,
+    volatility: "Low",
+    riskProfile: "Income defensive",
+    gameplayRole: "A lower-volatility property allocation with modest growth.",
+    summary:
+      "A property-trust sequence that provides a steadier counterweight to the set’s speculative assets.",
   },
   {
     id: 7,
     symbol: "SILVER",
+    fullName: "Silver",
     reference: "SILVER",
     assetClass: "Commodity",
     ticks: 360,
     firstPrice: 24,
     lastPrice: 22.81,
+    lowPrice: 21.66,
+    highPrice: 25.48,
+    volatility: "Moderate",
+    riskProfile: "Cyclical commodity",
+    gameplayRole: "A compact declining cycle for testing defensive decisions.",
+    summary:
+      "A cyclical commodity sequence with a mild loss profile and several short-lived rebounds.",
   },
   {
     id: 8,
     symbol: "DJI",
+    fullName: "Dow Jones Industrial Average",
     reference: "DJI",
     assetClass: "Market index",
     ticks: 360,
     firstPrice: 28000,
     lastPrice: 37484.89,
+    lowPrice: 27418.67,
+    highPrice: 38112.4,
+    volatility: "Low",
+    riskProfile: "Diversified core",
+    gameplayRole: "A broad blue-chip benchmark with stable upward movement.",
+    summary:
+      "A diversified index sequence that models long-term compounding with relatively measured volatility.",
   },
 ];
 
@@ -119,6 +191,11 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<{
+    stock: StockRecord;
+    slot: number;
+  } | null>(null);
+  const stockTriggerRef = useRef<HTMLTableRowElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
 
@@ -214,6 +291,20 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
       memberStocks.map((stock) => stock.symbol).join(", "),
     );
     setToast("Instrument symbols copied.");
+  }
+
+  function openStockRecord(
+    stock: StockRecord,
+    slot: number,
+    trigger: HTMLTableRowElement,
+  ) {
+    stockTriggerRef.current = trigger;
+    setSelectedStock({ stock, slot });
+  }
+
+  function closeStockRecord() {
+    setSelectedStock(null);
+    window.requestAnimationFrame(() => stockTriggerRef.current?.focus());
   }
 
   return (
@@ -418,7 +509,33 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
                         {memberStocks.map((stock, index) => {
                           const change = stockChange(stock);
                           return (
-                            <tr key={`${stock.id}-${index}`}>
+                            <tr
+                              className="membership-row-action stock-membership-row-action"
+                              key={`${stock.id}-${index}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`View ${stock.symbol} stock details`}
+                              onClick={(event) =>
+                                openStockRecord(
+                                  stock,
+                                  index + 1,
+                                  event.currentTarget,
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
+                                  event.preventDefault();
+                                  openStockRecord(
+                                    stock,
+                                    index + 1,
+                                    event.currentTarget,
+                                  );
+                                }
+                              }}
+                            >
                               <td>
                                 <span className="slot-number">
                                   {String(index + 1).padStart(2, "0")}
@@ -442,9 +559,12 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
                               </td>
                               <td>
                                 <span className="stock-price-range">
-                                  <strong>{money(stock.firstPrice)}</strong>
-                                  <i>→</i>
-                                  <strong>{money(stock.lastPrice)}</strong>
+                                  <span>
+                                    <strong>{money(stock.firstPrice)}</strong>
+                                    <i>→</i>
+                                    <strong>{money(stock.lastPrice)}</strong>
+                                  </span>
+                                  <b>View details</b>
                                 </span>
                               </td>
                               <td>
@@ -562,12 +682,199 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
         />
       )}
 
+      {selectedStock && dataset && (
+        <StockRecordModal
+          stock={selectedStock.stock}
+          slot={selectedStock.slot}
+          datasetName={dataset.name}
+          onClose={closeStockRecord}
+        />
+      )}
+
       {toast && (
         <div className="admin-toast" role="status">
           <span className="status-dot" />
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function StockRecordModal({
+  stock,
+  slot,
+  datasetName,
+  onClose,
+}: {
+  stock: StockRecord;
+  slot: number;
+  datasetName: string;
+  onClose: () => void;
+}) {
+  const modalRef = useRef<HTMLElement | null>(null);
+  const change = stockChange(stock);
+  const direction = change >= 0 ? "positive" : "negative";
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleModalKeys(keyEvent: KeyboardEvent) {
+      if (keyEvent.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (keyEvent.key !== "Tab" || !modalRef.current) return;
+
+      const controls = Array.from(
+        modalRef.current.querySelectorAll<HTMLButtonElement>(
+          "button:not(:disabled)",
+        ),
+      );
+      if (controls.length < 2) return;
+
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (keyEvent.shiftKey && document.activeElement === first) {
+        keyEvent.preventDefault();
+        last.focus();
+      } else if (!keyEvent.shiftKey && document.activeElement === last) {
+        keyEvent.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleModalKeys);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleModalKeys);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal-backdrop event-record-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <article
+        ref={modalRef}
+        className="event-record-modal stock-record-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="stock-record-title"
+        aria-describedby="stock-record-summary"
+        onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}
+      >
+        <header className="event-record-header stock-record-header">
+          <div className="event-record-type stock-record-type">
+            <span>{stock.symbol.slice(0, 2)}</span>
+          </div>
+          <div>
+            <p className="event-record-eyebrow stock-record-eyebrow">
+              INSTRUMENT {String(slot).padStart(2, "0")} · FIXED PRICE SEQUENCE
+            </p>
+            <h2 id="stock-record-title">{stock.fullName}</h2>
+            <p id="stock-record-summary">{stock.summary}</p>
+          </div>
+          <button
+            autoFocus
+            type="button"
+            aria-label="Close stock details"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="event-record-body">
+          <section className="event-record-meta stock-record-meta">
+            <div>
+              <span>SYMBOL</span>
+              <strong className="stock-tone">{stock.symbol}</strong>
+            </div>
+            <div>
+              <span>ASSET CLASS</span>
+              <strong>{stock.assetClass}</strong>
+            </div>
+            <div>
+              <span>REFERENCE</span>
+              <strong>{stock.reference}</strong>
+            </div>
+            <div>
+              <span>PRICE COVERAGE</span>
+              <strong>{stock.ticks} ticks · 60 min</strong>
+            </div>
+          </section>
+
+          <section
+            className={`event-impact-card stock-record-impact ${direction}`}
+          >
+            <div>
+              <p>SEQUENCE MOVEMENT</p>
+              <strong>
+                {change >= 0 ? "+" : ""}
+                {change.toFixed(1)}%
+              </strong>
+              <span>
+                {money(stock.firstPrice)} → {money(stock.lastPrice)}
+              </span>
+            </div>
+            <div>
+              <p>SIMULATED RANGE</p>
+              <strong>
+                {money(stock.lowPrice)} – {money(stock.highPrice)}
+              </strong>
+              <span>Low to high across 360 fixed price points</span>
+            </div>
+          </section>
+
+          <section className="event-behavior-grid stock-behavior-grid">
+            <div>
+              <p className="eyebrow">GAMEPLAY PROFILE</p>
+              <h3>{stock.riskProfile}</h3>
+              <p>{stock.gameplayRole}</p>
+              <span
+                className={`stock-volatility-badge ${stock.volatility.toLowerCase()}`}
+              >
+                <i />
+                {stock.volatility} volatility
+              </span>
+            </div>
+            <div>
+              <p className="eyebrow">SEQUENCE RULES</p>
+              <h3>Market engine instructions</h3>
+              <ol>
+                <li>
+                  <span>01</span>
+                  Advance to the next fixed price point every 10 seconds.
+                </li>
+                <li>
+                  <span>02</span>
+                  Use the same sequence for every player in the game session.
+                </li>
+                <li>
+                  <span>03</span>
+                  Reset the instrument to its opening price for a new game.
+                </li>
+              </ol>
+            </div>
+          </section>
+
+          <footer className="event-record-footer stock-record-footer">
+            <p>
+              Included in <strong>{datasetName}</strong>
+              <span>
+                Simulated instrument inventory · Source ID #{stock.id}
+              </span>
+            </p>
+            <button type="button" onClick={onClose}>
+              Close details
+            </button>
+          </footer>
+        </div>
+      </article>
     </div>
   );
 }
@@ -813,11 +1120,20 @@ function resolveStock(id: number): StockRecord {
     stockInventory.find((stock) => stock.id === id) ?? {
       id,
       symbol: `ASSET-${id}`,
+      fullName: `Simulated Asset ${id}`,
       reference: `SRC-${id}`,
       assetClass: "Simulated asset",
       ticks: 360,
       firstPrice: 100,
       lastPrice: 100,
+      lowPrice: 100,
+      highPrice: 100,
+      volatility: "Low",
+      riskProfile: "Balanced simulation",
+      gameplayRole:
+        "A neutral fallback sequence used when a source asset is unavailable.",
+      summary:
+        "A fixed simulated asset sequence included in this reusable stock package.",
     }
   );
 }

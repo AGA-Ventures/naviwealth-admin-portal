@@ -4732,6 +4732,150 @@ article.green .event-type-track i {
   box-shadow: 0 0 23px rgba(142, 63, 209, 0.26);
 }
 
+/* Stock membership details */
+
+.membership-table tbody tr.stock-membership-row-action:hover {
+  background: rgba(0, 211, 243, 0.045);
+  box-shadow: inset 2px 0 var(--cyan-deep);
+}
+
+.membership-table tbody tr.stock-membership-row-action:focus-visible {
+  background: rgba(0, 211, 243, 0.065);
+  box-shadow:
+    inset 2px 0 var(--cyan),
+    inset 0 0 0 1px rgba(0, 211, 243, 0.26);
+}
+
+.stock-price-range {
+  justify-content: space-between;
+}
+
+.stock-price-range > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.stock-price-range > b {
+  color: var(--cyan);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 7px;
+  font-weight: 650;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.stock-membership-row-action:hover .stock-price-range > b,
+.stock-membership-row-action:focus-visible .stock-price-range > b {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.stock-record-modal {
+  background:
+    radial-gradient(circle at 78% -12%, rgba(0, 211, 243, 0.1), transparent 32%),
+    linear-gradient(145deg, #10192e, #070d1d 62%);
+  box-shadow:
+    0 42px 110px rgba(0, 0, 0, 0.76),
+    0 0 50px rgba(0, 211, 243, 0.045);
+}
+
+.stock-record-type {
+  border-color: rgba(0, 211, 243, 0.3);
+  color: var(--cyan);
+  background: rgba(0, 184, 219, 0.08);
+}
+
+.stock-record-eyebrow,
+.stock-record-meta strong.stock-tone,
+.stock-behavior-grid .eyebrow {
+  color: var(--cyan);
+}
+
+.stock-record-header > button:hover,
+.stock-record-header > button:focus-visible {
+  border-color: rgba(0, 211, 243, 0.34);
+  box-shadow: 0 0 0 3px rgba(0, 211, 243, 0.07);
+}
+
+.stock-record-impact::after {
+  background: var(--cyan);
+}
+
+.stock-record-impact.positive > div:first-child strong {
+  color: var(--green);
+}
+
+.stock-record-impact.negative > div:first-child strong {
+  color: var(--red);
+}
+
+.stock-record-impact > div:nth-child(2) strong {
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.stock-behavior-grid li > span {
+  color: var(--cyan);
+}
+
+.stock-volatility-badge {
+  width: fit-content;
+  margin-top: 14px;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 5px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+}
+
+.stock-volatility-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.stock-volatility-badge.low {
+  border-color: rgba(5, 223, 114, 0.16);
+  color: var(--green);
+  background: rgba(5, 223, 114, 0.05);
+}
+
+.stock-volatility-badge.moderate {
+  border-color: rgba(253, 199, 0, 0.16);
+  color: var(--yellow);
+  background: rgba(253, 199, 0, 0.05);
+}
+
+.stock-volatility-badge.high {
+  border-color: rgba(255, 100, 103, 0.16);
+  color: var(--red);
+  background: rgba(255, 100, 103, 0.05);
+}
+
+.stock-record-footer button {
+  border-color: var(--cyan-deep);
+  color: #02101a;
+  background: var(--cyan);
+  box-shadow: 0 0 18px rgba(0, 211, 243, 0.14);
+}
+
+.stock-record-footer button:hover,
+.stock-record-footer button:focus-visible {
+  color: #02101a;
+  background: #38e4ff;
+  box-shadow: 0 0 23px rgba(0, 211, 243, 0.24);
+}
+
 @media (max-width: 760px) {
   .event-record-modal {
     max-height: 92svh;

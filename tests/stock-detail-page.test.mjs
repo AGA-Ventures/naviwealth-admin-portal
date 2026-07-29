@@ -31,3 +31,40 @@ test("stock detail page presents package membership and working controls", async
   assert.match(detail, /method: "PATCH"/);
   assert.match(detail, /Copy symbols/);
 });
+
+test("opens a detailed stock record from every instrument row", async () => {
+  const detail = await source(
+    "app/admin/stocks/[id]/StockDatasetDetail.tsx",
+  );
+
+  assert.match(detail, /className="membership-row-action stock-membership-row-action"/);
+  assert.match(detail, /aria-label=\{`View \$\{stock\.symbol\} stock details`\}/);
+  assert.match(detail, /event\.key === "Enter"/);
+  assert.match(detail, /event\.key === " "/);
+  assert.match(detail, /<StockRecordModal/);
+  assert.match(detail, /SEQUENCE MOVEMENT/);
+  assert.match(detail, /SIMULATED RANGE/);
+  assert.match(detail, /GAMEPLAY PROFILE/);
+  assert.match(detail, /Market engine instructions/);
+  assert.match(detail, /aria-modal="true"/);
+  assert.match(detail, /keyEvent\.key === "Escape"/);
+});
+
+test("provides authored profiles for all eight simulated instruments", async () => {
+  const detail = await source(
+    "app/admin/stocks/[id]/StockDatasetDetail.tsx",
+  );
+
+  for (const symbol of [
+    "Ethereum",
+    "Apple Inc.",
+    "Gold",
+    "NASDAQ Composite",
+    "NFT Market Index",
+    "Property REIT Index",
+    "Silver",
+    "Dow Jones Industrial Average",
+  ]) {
+    assert.match(detail, new RegExp(`fullName: "${symbol.replace(".", "\\.")}"`));
+  }
+});

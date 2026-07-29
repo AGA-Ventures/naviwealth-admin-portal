@@ -1,26 +1,26 @@
-# Stock Set Details — Design QA
+# Stock Instrument Popup — Design QA
 
 ## Comparison target
 
-- Source visual truth: `design-qa-stock-detail-source.png` (the accepted Event Set detail layout) and `design-qa-stock-library-source.png` (the annotated Stock Dataset design language and content).
-- Implementation: `design-qa-stock-detail.png`.
+- Source visual truth: `design-qa-stock-popup-source.png` (the accepted Event Record popup pattern at the same viewport).
+- Implementation: `design-qa-stock-popup.png` (Ethereum details opened from Stock Set 4).
 - Viewport: 1954 × 1273 CSS pixels.
 - Source and implementation screenshots: 1954 × 1273 pixels.
-- Device scale factor: 2; the in-app browser normalized both captures to the same CSS-sized PNG, so no additional density conversion was required.
-- State: Stock Set 4 loaded, configuration dialog closed, desktop layout.
+- Device scale factor: 2; both in-app browser captures were normalized to the same CSS-sized PNG.
+- State: first membership record opened in a modal over its corresponding detail page.
 
 ## Full-view comparison evidence
 
-- Evidence: `design-qa-stock-detail-comparison.png`.
-- The Stock Set page preserves the accepted detail hierarchy: persistent sidebar, restrained top bar, breadcrumb, icon/title/action hero, four metrics, large membership table, readiness panel, and reuse-history panel.
-- The cyan stock accent intentionally replaces the event page’s purple accent while retaining the same semantic hierarchy and component proportions.
-- No content overlaps, clipped controls, unexpected wrapping, or horizontal overflow are visible at the target viewport.
+- Evidence: `design-qa-stock-popup-comparison.png`.
+- The popup preserves the accepted centered modal, dimmed backdrop, header, four-cell metadata band, two-column headline metrics, behavior/instructions section, and footer.
+- The surrounding Stock Set page remains visible and correctly blurred without shifting or overflowing.
+- The stock-specific cyan treatment replaces the event popup’s purple accent while retaining green/red semantic movement colors.
 
 ## Focused comparison evidence
 
-- Evidence: `design-qa-stock-detail-focused-comparison.png`.
-- The hero, metrics, table header, table rows, readiness card, and reuse card retain the source screen’s padding, radii, borders, density, and alignment.
-- Stock-specific price ranges and sequence-change badges remain readable without changing the table’s overall rhythm.
+- Evidence: `design-qa-stock-popup-focused-comparison.png`.
+- Header alignment, title scale, close control, metadata padding, metric hierarchy, two-column content split, divider treatment, and footer alignment match the established popup pattern.
+- Longer stock-specific values fit without clipping, including the simulated range and 360-tick coverage.
 
 ## Findings
 
@@ -28,32 +28,35 @@
 
 ## Required fidelity surfaces
 
-- Fonts and typography: Geist Sans and Geist Mono, weights, hierarchy, line height, tracking, and numeric emphasis match the existing portal.
-- Spacing and layout rhythm: sidebar width, main-content inset, hero spacing, four-card grid, table density, 15px column gap, borders, and radii match the accepted detail screen.
-- Colors and visual tokens: existing navy surfaces and line tokens are preserved; cyan is used consistently for the stock context, with green/red reserved for positive/negative moves and yellow for usage.
-- Image quality and asset fidelity: no new raster imagery was required; the screen uses the portal’s existing logo and component assets without placeholders.
-- Copy and content: labels describe the stock package accurately, including 360 ticks, 10-second cadence, MYR price ranges, readiness, and reuse history.
+- Fonts and typography: Geist Sans and Geist Mono, weights, numeric emphasis, tracking, line height, and hierarchy match the existing admin portal.
+- Spacing and layout rhythm: 730px modal width, section padding, grid gaps, radii, dividers, and centered viewport placement match the accepted component.
+- Colors and visual tokens: navy surfaces and border tokens are preserved; cyan identifies stock context, green/red communicate positive/negative movement, and risk badges use semantic volatility colors.
+- Image quality and asset fidelity: no new raster imagery was required; existing brand and interface assets remain unchanged with no placeholders.
+- Copy and content: every field is stock-specific and useful—symbol, asset class, reference, coverage, price movement, range, gameplay profile, volatility, rules, package, and source ID.
 
 ## Interaction checks
 
-- Selecting Stock Set 4 from the library navigates to `/admin/stocks/8`.
-- Configure set opens the existing stock-package editor and Close dialog dismisses it.
-- Duplicate, Use in game, Copy symbols, breadcrumb, back link, and sidebar routes are present and connected.
+- Clicking the ETH row opens the Ethereum record.
+- Pressing Enter on the AAPL row opens Apple Inc. with its distinct negative sequence.
+- Escape closes the popup and restores focus to the originating row.
+- The header close control and footer Close details button both dismiss the popup.
+- The dialog traps keyboard focus between its controls and prevents background scrolling.
 - The browser console reported no errors.
 - The production build completed successfully.
-- All 11 automated tests pass.
+- All 13 automated tests pass.
 
 ## Comparison history
 
-- Initial implementation: no P0/P1/P2 visual mismatch was identified in the first normalized side-by-side comparison, so no design-fix iteration was required.
+- Initial comparison: the stock popup matched the accepted layout with no P0/P1/P2 issues. A minor inherited purple instruction-step accent was changed to cyan before the final capture for stock-context consistency.
 
 ## Implementation checklist
 
-- [x] Card-level navigation to a dedicated Stock Set route.
-- [x] Stock-specific hero, metrics, membership table, readiness, and usage.
-- [x] Working package configuration and dataset actions.
-- [x] Responsive reuse of the existing detail-page layout.
-- [x] Browser and automated verification.
+- [x] Every instrument membership row opens a stock record.
+- [x] Eight authored instrument profiles with realistic fixed-sequence data.
+- [x] Mouse, Enter, Space, Escape, backdrop, and close-button support.
+- [x] Focus return, focus containment, and body scroll lock.
+- [x] Desktop and responsive reuse of the established modal component.
+- [x] Browser, build, and automated-test verification.
 
 ## Follow-up polish
 
