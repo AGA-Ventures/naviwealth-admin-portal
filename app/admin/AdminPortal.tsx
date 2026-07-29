@@ -213,10 +213,10 @@ export function AdminPortal({ user }: AdminPortalProps) {
             Stock datasets
             <em>{datasets.filter((dataset) => dataset.kind === "stock").length}</em>
           </a>
-          <a href="/admin#validation">
-            <span className="nav-glyph">✓</span>
-            Validation
-            {totals.warnings > 0 && <i>{totals.warnings}</i>}
+          <a href="/admin/events">
+            <span className="nav-glyph">◈</span>
+            Event datasets
+            <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
           </a>
           <p>GAME SYSTEM</p>
           <a href="/admin#game-library">

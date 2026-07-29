@@ -17,43 +17,74 @@ type Dataset = {
   updatedAt: string;
 };
 
-type StockRecord = {
-  id: number;
-  symbol: string;
-  reference: string;
-  ticks: number;
-  firstPrice: number;
-  lastPrice: number;
-};
-
 type ModalState =
   | { mode: "create"; dataset: null }
   | { mode: "edit"; dataset: Dataset }
   | null;
 
-const stockInventory: StockRecord[] = [
-  { id: 1, symbol: "ETH", reference: "ETH", ticks: 360, firstPrice: 2200, lastPrice: 3688.22 },
-  { id: 2, symbol: "AAPL", reference: "AAPL", ticks: 360, firstPrice: 145, lastPrice: 119.52 },
-  { id: 3, symbol: "GOLD", reference: "GOLD", ticks: 360, firstPrice: 1434.43, lastPrice: 4513.87 },
-  { id: 4, symbol: "NASDAQ", reference: "NASDAQ", ticks: 360, firstPrice: 12000, lastPrice: 13987.45 },
-  { id: 5, symbol: "NFT", reference: "NFT", ticks: 360, firstPrice: 500, lastPrice: 1411.08 },
-  { id: 6, symbol: "REIT", reference: "REIT", ticks: 360, firstPrice: 280, lastPrice: 306.42 },
-  { id: 7, symbol: "SILVER", reference: "SILVER", ticks: 360, firstPrice: 24, lastPrice: 22.81 },
-  { id: 8, symbol: "DJI", reference: "DJI", ticks: 360, firstPrice: 28000, lastPrice: 37484.89 },
+const eventCategories = [
+  {
+    key: "capital_gain",
+    label: "Capital gain",
+    count: 31,
+    copy: "Property and leveraged asset opportunities.",
+    tone: "purple",
+    code: "CG",
+  },
+  {
+    key: "cashflow",
+    label: "Cashflow",
+    count: 33,
+    copy: "Business, franchise, skill, and income events.",
+    tone: "cyan",
+    code: "CF",
+  },
+  {
+    key: "expenses",
+    label: "Expenses",
+    count: 19,
+    copy: "Lifestyle, protection, emergency, and happiness costs.",
+    tone: "yellow",
+    code: "EX",
+  },
+  {
+    key: "market",
+    label: "Market",
+    count: 8,
+    copy: "Automatic global financial changes.",
+    tone: "green",
+    code: "MK",
+  },
 ];
 
-const sparkPatterns = [
-  [21, 28, 25, 34, 41, 47, 44, 53, 60, 67, 72, 78],
-  [71, 68, 72, 63, 58, 62, 52, 49, 44, 48, 39, 36],
-  [19, 26, 31, 29, 40, 46, 52, 58, 66, 72, 83, 92],
-  [42, 39, 47, 52, 48, 58, 55, 63, 69, 65, 75, 79],
-  [16, 23, 28, 38, 33, 44, 51, 62, 58, 72, 81, 89],
-  [38, 43, 39, 48, 52, 50, 59, 57, 63, 68, 65, 71],
-  [63, 57, 61, 54, 58, 49, 46, 52, 43, 39, 42, 37],
-  [34, 41, 38, 46, 51, 57, 54, 64, 68, 73, 79, 84],
+const sampleEvents = [
+  {
+    code: "7497",
+    title: "Real estate investment — 1-bedroom apartment",
+    type: "capital_gain",
+    side: "A",
+    behavior: "Property purchase",
+    status: "Actionable",
+  },
+  {
+    code: "3345",
+    title: "Financial Protection — Medical Insurance Upgrade",
+    type: "expenses",
+    side: "ALL",
+    behavior: "One-time expense",
+    status: "Actionable",
+  },
+  {
+    code: "2906",
+    title: "Market Changes — Impact of the Pandemic",
+    type: "market",
+    side: "ALL",
+    behavior: "Automatic effect",
+    status: "Automatic",
+  },
 ];
 
-export function StockDatasets({
+export function EventDatasets({
   user,
 }: {
   user: { name: string; email: string };
@@ -62,7 +93,6 @@ export function StockDatasets({
   const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -74,7 +104,7 @@ export function StockDatasets({
       const response = await fetch("/api/datasets", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load stock datasets.");
+        throw new Error(payload.error ?? "Unable to load event datasets.");
       }
       setDatasets(payload.datasets);
       setLimit(payload.limit);
@@ -82,7 +112,7 @@ export function StockDatasets({
       setLoadError(
         error instanceof Error
           ? error.message
-          : "Unable to load stock datasets.",
+          : "Unable to load event datasets.",
       );
     } finally {
       setLoading(false);
@@ -99,26 +129,15 @@ export function StockDatasets({
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const stockSets = useMemo(
-    () => datasets.filter((dataset) => dataset.kind === "stock"),
+  const eventSets = useMemo(
+    () => datasets.filter((dataset) => dataset.kind === "event"),
     [datasets],
   );
-
-  const visibleStocks = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return stockInventory;
-    return stockInventory.filter(
-      (stock) =>
-        stock.symbol.toLowerCase().includes(normalized) ||
-        stock.reference.toLowerCase().includes(normalized),
-    );
-  }, [query]);
-
-  const totalMemberships = stockSets.reduce(
+  const totalMemberships = eventSets.reduce(
     (total, dataset) => total + dataset.itemCount,
     0,
   );
-  const totalReuses = stockSets.reduce(
+  const totalReuses = eventSets.reduce(
     (total, dataset) => total + dataset.reuseCount,
     0,
   );
@@ -137,7 +156,7 @@ export function StockDatasets({
 
       if (action === "duplicate") {
         setDatasets((current) => [payload.dataset, ...current]);
-        setToast(`${dataset.name} duplicated as a reusable stock draft.`);
+        setToast(`${dataset.name} duplicated as a reusable event draft.`);
       } else {
         setDatasets((current) =>
           current.map((item) =>
@@ -155,7 +174,7 @@ export function StockDatasets({
 
   async function deleteDataset(dataset: Dataset) {
     const confirmed = window.confirm(
-      `Delete “${dataset.name}”? The eight source stock records will remain available.`,
+      `Delete “${dataset.name}”? The source event records will remain available.`,
     );
     if (!confirmed) return;
 
@@ -192,7 +211,7 @@ export function StockDatasets({
   }
 
   return (
-    <div className="admin-app stock-admin-page">
+    <div className="admin-app event-admin-page">
       <aside className="admin-sidebar">
         <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
@@ -210,15 +229,15 @@ export function StockDatasets({
             <span className="nav-glyph">⌂</span>
             Overview
           </a>
-          <a className="active" href="/admin/stocks">
+          <a href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
-            <em>{stockSets.length}</em>
+            <em>{datasets.filter((dataset) => dataset.kind === "stock").length}</em>
           </a>
-          <a href="/admin/events">
+          <a className="active" href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
-            <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
+            <em>{eventSets.length}</em>
           </a>
           <p>GAME SYSTEM</p>
           <a href="/admin#game-library">
@@ -231,13 +250,13 @@ export function StockDatasets({
           </a>
         </nav>
 
-        <div className="stock-side-note">
-          <span>STOCK CLOCK</span>
-          <strong>10 second ticks</strong>
-          <p>360 prices cover one 60-minute game.</p>
+        <div className="event-side-note">
+          <span>EVENT ROTATION</span>
+          <strong>60 second windows</strong>
+          <p>Side A and Side B rotate eligible events independently.</p>
           <div>
             <i className="status-dot" />
-            DATASET HEALTHY
+            91 ACTIVE RECORDS
           </div>
         </div>
 
@@ -261,19 +280,13 @@ export function StockDatasets({
             </span>
             <strong>NaviWealth</strong>
           </div>
-          <label className="global-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              placeholder="Search stock inventory…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <kbd>⌘ K</kbd>
-          </label>
+          <div className="event-top-context">
+            <span>EVENT LIBRARY</span>
+            <strong>91 active records</strong>
+          </div>
           <div className="topbar-status">
             <span className="status-dot" />
-            MARKET DATA ONLINE
+            EVENT ENGINE ONLINE
           </div>
         </header>
 
@@ -283,52 +296,52 @@ export function StockDatasets({
               <div className="stock-breadcrumb">
                 <a href="/admin">Dataset control</a>
                 <span>/</span>
-                <strong>Stocks</strong>
+                <strong>Events</strong>
               </div>
-              <p className="eyebrow">STOCK CONTENT OPERATIONS</p>
-              <h1>Stock datasets</h1>
+              <p className="eyebrow event-eyebrow">EVENT CONTENT OPERATIONS</p>
+              <h1>Event datasets</h1>
               <p>
-                Build reusable market packages from eight simulated instruments
-                and deploy them across any game.
+                Curate reusable opportunity, expense, and market-event packages
+                for both sides of every game.
               </p>
             </div>
             <button
-              className="admin-primary"
+              className="admin-primary event-primary"
               type="button"
               onClick={() => setModal({ mode: "create", dataset: null })}
               disabled={atCapacity}
             >
               <span aria-hidden="true">＋</span>
-              New stock dataset
+              New event dataset
             </button>
           </section>
 
-          <section className="metric-grid stock-metrics">
+          <section className="metric-grid event-metrics">
             <Metric
-              label="Stock datasets"
-              value={`${stockSets.length}`}
+              label="Event datasets"
+              value={`${eventSets.length}`}
               meta="reusable packages"
-              tone="cyan"
-              symbol="▦"
-            />
-            <Metric
-              label="Unique instruments"
-              value="8"
-              meta="simulated assets"
               tone="purple"
-              symbol="⌁"
+              symbol="◈"
             />
             <Metric
-              label="Price points"
-              value="2,880"
-              meta="360 ticks per stock"
+              label="Active events"
+              value="91"
+              meta="unique four-digit codes"
+              tone="cyan"
+              symbol="#"
+            />
+            <Metric
+              label="Actionable"
+              value="83"
+              meta="player decisions"
               tone="green"
-              symbol="⌗"
+              symbol="✓"
             />
             <Metric
-              label="Package reuses"
-              value={`${totalReuses}`}
-              meta={`${totalMemberships} memberships`}
+              label="Automatic market"
+              value="8"
+              meta={`${totalReuses} package reuses`}
               tone="yellow"
               symbol="↻"
             />
@@ -344,17 +357,17 @@ export function StockDatasets({
             </div>
           )}
 
-          <section className="stock-set-section">
+          <section className="stock-set-section event-set-section">
             <div className="stock-section-heading">
               <div>
-                <p className="eyebrow">REUSABLE PACKAGES</p>
-                <h2>Stock set library</h2>
+                <p className="eyebrow event-eyebrow">REUSABLE PACKAGES</p>
+                <h2>Event set library</h2>
                 <span>
-                  Configure membership once and reuse the same package in future
+                  Bundle event IDs once and deploy the same rotation in future
                   games.
                 </span>
               </div>
-              <span>{stockSets.length} packages</span>
+              <span>{eventSets.length} packages</span>
             </div>
 
             <div className="stock-set-grid">
@@ -362,8 +375,8 @@ export function StockDatasets({
                 ? Array.from({ length: 4 }, (_, index) => (
                     <div className="stock-set-card loading" key={index} />
                   ))
-                : stockSets.map((dataset) => (
-                    <StockSetCard
+                : eventSets.map((dataset) => (
+                    <EventSetCard
                       key={dataset.id}
                       dataset={dataset}
                       busy={busy}
@@ -373,118 +386,123 @@ export function StockDatasets({
                       onDelete={() => void deleteDataset(dataset)}
                     />
                   ))}
-              {!loading && stockSets.length === 0 && (
-                <button
-                  className="empty-stock-card"
-                  type="button"
-                  onClick={() => setModal({ mode: "create", dataset: null })}
-                >
-                  <span>＋</span>
-                  <strong>Create the first stock dataset</strong>
-                  <small>Select instruments from the inventory below.</small>
-                </button>
-              )}
             </div>
           </section>
 
-          <section className="stock-inventory-panel">
-            <div className="stock-section-heading inventory-heading">
-              <div>
-                <p className="eyebrow">SOURCE INVENTORY</p>
-                <h2>Simulated instruments</h2>
-                <span>
-                  Reference prices are fixed gameplay sequences, not a live
-                  market feed.
-                </span>
+          <section className="event-insight-grid">
+            <div className="event-type-panel">
+              <div className="stock-section-heading">
+                <div>
+                  <p className="eyebrow event-eyebrow">SOURCE INVENTORY</p>
+                  <h2>Event type distribution</h2>
+                  <span>All active reusable event records by top-level type.</span>
+                </div>
+                <span>91 events</span>
               </div>
-              <label className="table-search">
-                <span aria-hidden="true">⌕</span>
-                <input
-                  type="search"
-                  placeholder="Filter symbols"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </label>
+              <div className="event-type-grid">
+                {eventCategories.map((category) => (
+                  <article key={category.key} className={category.tone}>
+                    <span>{category.code}</span>
+                    <div>
+                      <strong>{category.label}</strong>
+                      <p>{category.copy}</p>
+                    </div>
+                    <em>{category.count}</em>
+                    <div className="event-type-track">
+                      <i style={{ width: `${(category.count / 91) * 100}%` }} />
+                    </div>
+                  </article>
+                ))}
+              </div>
             </div>
 
-            <div className="stock-inventory-table-wrap">
-              <table className="stock-inventory-table">
+            <aside className="event-side-panel">
+              <div className="stock-section-heading">
+                <div>
+                  <p className="eyebrow event-eyebrow">SCREEN COVERAGE</p>
+                  <h2>Side distribution</h2>
+                </div>
+              </div>
+              <div className="side-bars">
+                <SideBar label="Side A" count={31} total={91} tone="purple" />
+                <SideBar label="Side B" count={33} total={91} tone="cyan" />
+                <SideBar label="All sides" count={27} total={91} tone="green" />
+              </div>
+              <div className="event-rule-note">
+                <span>i</span>
+                <p>
+                  ALL-side market events dispatch once, preventing duplicate
+                  global effects.
+                </p>
+              </div>
+            </aside>
+          </section>
+
+          <section className="event-sample-panel">
+            <div className="stock-section-heading">
+              <div>
+                <p className="eyebrow event-eyebrow">REFERENCE RECORDS</p>
+                <h2>Event inventory sample</h2>
+                <span>
+                  Representative property, expense, and automatic market
+                  records.
+                </span>
+              </div>
+              <span>{totalMemberships} memberships</span>
+            </div>
+            <div className="event-sample-table-wrap">
+              <table className="event-sample-table">
                 <thead>
                   <tr>
-                    <th>Instrument</th>
-                    <th>Reference</th>
-                    <th>Tick coverage</th>
-                    <th>First price</th>
-                    <th>Last price</th>
-                    <th>Sequence change</th>
-                    <th>Trend profile</th>
-                    <th>Used in</th>
+                    <th>Code</th>
+                    <th>Event</th>
+                    <th>Type</th>
+                    <th>Side</th>
+                    <th>Behavior</th>
+                    <th>Mode</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleStocks.map((stock) => {
-                    const change =
-                      ((stock.lastPrice - stock.firstPrice) /
-                        stock.firstPrice) *
-                      100;
-                    const packageCount = stockSets.filter((dataset) =>
-                      dataset.memberIds.includes(stock.id),
-                    ).length;
-
-                    return (
-                      <tr key={stock.id}>
-                        <td data-label="Instrument">
-                          <span className="stock-symbol">
-                            <i>{stock.symbol.slice(0, 2)}</i>
-                            <strong>{stock.symbol}</strong>
-                          </span>
-                        </td>
-                        <td data-label="Reference">{stock.reference}</td>
-                        <td data-label="Tick coverage">
-                          <strong>{stock.ticks}</strong>
-                          <small>60 minutes</small>
-                        </td>
-                        <td data-label="First price">
-                          {money(stock.firstPrice)}
-                        </td>
-                        <td data-label="Last price">
-                          {money(stock.lastPrice)}
-                        </td>
-                        <td data-label="Sequence change">
-                          <span className={change >= 0 ? "positive" : "negative"}>
-                            {change >= 0 ? "+" : ""}
-                            {change.toFixed(1)}%
-                          </span>
-                        </td>
-                        <td data-label="Trend profile">
-                          <Sparkline
-                            values={sparkPatterns[stock.id - 1]}
-                            positive={change >= 0}
-                          />
-                        </td>
-                        <td data-label="Used in">
-                          <span className="package-usage">
-                            {packageCount} set{packageCount === 1 ? "" : "s"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {sampleEvents.map((event) => (
+                    <tr key={event.code}>
+                      <td>
+                        <code>{event.code}</code>
+                      </td>
+                      <td>
+                        <strong>{event.title}</strong>
+                      </td>
+                      <td>
+                        <span className={`event-type-label ${event.type}`}>
+                          {event.type.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="event-side-label">{event.side}</span>
+                      </td>
+                      <td>{event.behavior}</td>
+                      <td>
+                        <span
+                          className={
+                            event.status === "Automatic"
+                              ? "event-mode automatic"
+                              : "event-mode actionable"
+                          }
+                        >
+                          <i />
+                          {event.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-              {visibleStocks.length === 0 && (
-                <div className="stock-no-results">
-                  No instruments match “{query}”.
-                </div>
-              )}
             </div>
           </section>
         </div>
       </main>
 
       {modal && (
-        <StockSetModal
+        <EventSetModal
           modal={modal}
           onClose={() => setModal(null)}
           onSaved={datasetSaved}
@@ -528,7 +546,7 @@ function Metric({
   );
 }
 
-function StockSetCard({
+function EventSetCard({
   dataset,
   busy,
   onEdit,
@@ -543,14 +561,10 @@ function StockSetCard({
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const members = dataset.memberIds
-    .map((id) => stockInventory.find((stock) => stock.id === id)?.symbol)
-    .filter(Boolean);
-
   return (
-    <article className="stock-set-card">
+    <article className="stock-set-card event-set-card">
       <div className="stock-set-card-top">
-        <span className="dataset-kind-icon stock">ST</span>
+        <span className="dataset-kind-icon event">EV</span>
         <span className={`status-label ${dataset.status}`}>
           <i />
           {dataset.status}
@@ -569,16 +583,21 @@ function StockSetCard({
       </div>
       <h3>{dataset.name}</h3>
       <p>{dataset.description}</p>
-      <div className="stock-member-list">
-        {members.slice(0, 6).map((symbol) => (
-          <span key={symbol}>{symbol}</span>
-        ))}
-        {members.length > 6 && <span>+{members.length - 6}</span>}
-        {members.length === 0 && <em>No instruments selected</em>}
+      <div className="event-member-preview">
+        <span>
+          <strong>{dataset.itemCount}</strong>
+          event IDs
+        </span>
+        <div>
+          {dataset.memberIds.slice(0, 5).map((id) => (
+            <i key={id}>#{id}</i>
+          ))}
+          {dataset.itemCount > 5 && <i>+{dataset.itemCount - 5}</i>}
+        </div>
       </div>
       <div className="stock-set-stats">
         <span>
-          <small>INSTRUMENTS</small>
+          <small>EVENTS</small>
           <strong>{dataset.itemCount}</strong>
         </span>
         <span>
@@ -606,7 +625,7 @@ function StockSetCard({
   );
 }
 
-function StockSetModal({
+function EventSetModal({
   modal,
   onClose,
   onSaved,
@@ -621,11 +640,25 @@ function StockSetModal({
   const [status, setStatus] = useState<Dataset["status"]>(
     source?.status ?? "draft",
   );
-  const [selected, setSelected] = useState<number[]>(
-    source?.memberIds.filter((id) => id <= stockInventory.length) ?? [],
+  const [members, setMembers] = useState(
+    source?.memberIds.join(", ") ?? "",
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const memberIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          members
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map(Number)
+            .filter((value) => Number.isInteger(value) && value > 0),
+        ),
+      ),
+    [members],
+  );
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -634,14 +667,6 @@ function StockSetModal({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
-
-  function toggleStock(id: number) {
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((stockId) => stockId !== id)
-        : [...current, id],
-    );
-  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -657,10 +682,10 @@ function StockSetModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name,
-            kind: "stock",
+            kind: "event",
             description,
             status,
-            memberIds: selected,
+            memberIds,
           }),
         },
       );
@@ -679,25 +704,24 @@ function StockSetModal({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="dataset-modal stock-dataset-modal"
+        className="dataset-modal event-dataset-modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="stock-modal-title"
+        aria-labelledby="event-modal-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="modal-header">
           <div>
-            <p className="eyebrow">
+            <p className="eyebrow event-eyebrow">
               {modal.mode === "create"
-                ? "NEW STOCK PACKAGE"
-                : "CONFIGURE STOCK PACKAGE"}
+                ? "NEW EVENT PACKAGE"
+                : "CONFIGURE EVENT PACKAGE"}
             </p>
-            <h2 id="stock-modal-title">
-              {modal.mode === "create" ? "Create stock dataset" : source?.name}
+            <h2 id="event-modal-title">
+              {modal.mode === "create" ? "Create event dataset" : source?.name}
             </h2>
             <p>
-              Select the simulated instruments that this reusable package
-              should contain.
+              Bundle existing event IDs into a reusable game rotation.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close dialog">
@@ -715,7 +739,7 @@ function StockSetModal({
                 maxLength={80}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Stock Set 5"
+                placeholder="e.g. Event Set 5"
               />
             </label>
             <label className="admin-field wide">
@@ -725,7 +749,7 @@ function StockSetModal({
                 maxLength={240}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Where should this stock package be used?"
+                placeholder="Where should this event rotation be used?"
               />
             </label>
             <label className="admin-field wide">
@@ -741,53 +765,39 @@ function StockSetModal({
                 <option value="archived">Archived</option>
               </select>
             </label>
+            <label className="admin-field wide">
+              <span>
+                Bundled event IDs <em>{memberIds.length} unique events</em>
+              </span>
+              <textarea
+                rows={7}
+                value={members}
+                onChange={(event) => setMembers(event.target.value)}
+                placeholder="1, 2, 3, 4"
+              />
+              <small>
+                Enter event IDs separated by commas or spaces. Duplicate values
+                are removed automatically.
+              </small>
+            </label>
           </div>
 
-          <div className="stock-picker-heading">
-            <div>
-              <strong>Instrument membership</strong>
-              <span>All instruments contain 360 gameplay ticks.</span>
-            </div>
+          <div className="event-member-tools">
             <button
               type="button"
               onClick={() =>
-                setSelected(
-                  selected.length === stockInventory.length
-                    ? []
-                    : stockInventory.map((stock) => stock.id),
+                setMembers(
+                  Array.from({ length: 91 }, (_, index) => index + 1).join(", "),
                 )
               }
             >
-              {selected.length === stockInventory.length
-                ? "Clear all"
-                : "Select all"}
+              Select all 91 events
             </button>
-          </div>
-
-          <div className="stock-picker">
-            {stockInventory.map((stock) => (
-              <label
-                key={stock.id}
-                className={selected.includes(stock.id) ? "selected" : ""}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.includes(stock.id)}
-                  onChange={() => toggleStock(stock.id)}
-                />
-                <span>{stock.symbol.slice(0, 2)}</span>
-                <strong>{stock.symbol}</strong>
-                <small>{money(stock.firstPrice)} start</small>
-              </label>
-            ))}
-          </div>
-
-          <div className="stock-picker-summary">
+            <button type="button" onClick={() => setMembers("")}>
+              Clear membership
+            </button>
             <span>
-              <strong>{selected.length}</strong> of 8 instruments selected
-            </span>
-            <span>
-              <strong>{selected.length * 360}</strong> total price points
+              <strong>{memberIds.length}</strong> selected
             </span>
           </div>
 
@@ -797,11 +807,15 @@ function StockSetModal({
             <button type="button" onClick={onClose}>
               Cancel
             </button>
-            <button className="admin-primary" type="submit" disabled={saving}>
+            <button
+              className="admin-primary event-primary"
+              type="submit"
+              disabled={saving}
+            >
               {saving
                 ? "Saving…"
                 : modal.mode === "create"
-                  ? "Create stock dataset"
+                  ? "Create event dataset"
                   : "Save configuration"}
             </button>
           </div>
@@ -811,28 +825,29 @@ function StockSetModal({
   );
 }
 
-function Sparkline({
-  values,
-  positive,
+function SideBar({
+  label,
+  count,
+  total,
+  tone,
 }: {
-  values: number[];
-  positive: boolean;
+  label: string;
+  count: number;
+  total: number;
+  tone: string;
 }) {
   return (
-    <span className={`stock-sparkline ${positive ? "up" : "down"}`}>
-      {values.map((value, index) => (
-        <i key={`${value}-${index}`} style={{ height: `${value}%` }} />
-      ))}
-    </span>
+    <div className={tone}>
+      <span>
+        <strong>{label}</strong>
+        <em>{count} events</em>
+      </span>
+      <div>
+        <i style={{ width: `${(count / total) * 100}%` }} />
+      </div>
+      <small>{Math.round((count / total) * 100)}%</small>
+    </div>
   );
-}
-
-function money(value: number) {
-  return new Intl.NumberFormat("en-MY", {
-    style: "currency",
-    currency: "MYR",
-    minimumFractionDigits: 2,
-  }).format(value);
 }
 
 function relativeDate(value: string) {
