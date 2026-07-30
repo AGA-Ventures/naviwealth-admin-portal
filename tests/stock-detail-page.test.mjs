@@ -51,20 +51,73 @@ test("opens a detailed stock record from every instrument row", async () => {
 });
 
 test("provides authored profiles for all eight simulated instruments", async () => {
-  const detail = await source(
-    "app/admin/stocks/[id]/StockDatasetDetail.tsx",
-  );
+  const inventory = await source("app/admin/stocks/stock-inventory.ts");
 
-  for (const symbol of [
-    "Ethereum",
-    "Apple Inc.",
+  for (const name of [
+    "Bitcoin",
+    "FTSE Bursa Malaysia KLCI",
     "Gold",
-    "NASDAQ Composite",
-    "NFT Market Index",
-    "Property REIT Index",
-    "Silver",
-    "Dow Jones Industrial Average",
+    "S&P 500",
+    "Bitcoin · Scenario 2",
+    "FTSE Bursa Malaysia KLCI · Scenario 2",
+    "Gold · Scenario 2",
+    "S&P 500 · Scenario 2",
   ]) {
-    assert.match(detail, new RegExp(`fullName: "${symbol.replace(".", "\\.")}"`));
+    assert.match(
+      inventory,
+      new RegExp(
+        `fullName: "${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+      ),
+    );
+  }
+});
+
+test("shows and edits the complete 360-point sequence with a live line chart", async () => {
+  const [detail, store, route, gateway] = await Promise.all([
+    source("app/admin/stocks/[id]/StockDatasetDetail.tsx"),
+    source("db/stock-prices.ts"),
+    source("app/api/stocks/[id]/prices/route.ts"),
+    source("supabase/functions/naviwealth-datasets/index.ts"),
+  ]);
+
+  assert.match(detail, /All 360 editable data points/);
+  assert.match(detail, /<StockPriceChart/);
+  assert.match(detail, /aria-label=\{`\$\{symbol\} price line across all 360 periods`\}/);
+  assert.match(detail, /series\.points\.map/);
+  assert.match(detail, /type="number"/);
+  assert.match(detail, /savePriceChanges/);
+  assert.match(detail, /method: "PATCH"/);
+  assert.match(store, /operation: "getStockPriceSeries"/);
+  assert.match(store, /operation: "updateStockPrices"/);
+  assert.match(route, /updateStockPriceSeries/);
+  assert.match(gateway, /case "getStockPriceSeries"/);
+  assert.match(gateway, /case "updateStockPrices"/);
+});
+
+test("imports exactly 360 raw prices for each of the eight CSV stocks", async () => {
+  const migration = await source(
+    "supabase/migrations/20260730051434_import_stock_price_points.sql",
+  );
+  const arrays = [
+    ...migration.matchAll(
+      /from unnest\(array\[([^\]]+)\]::numeric\[\]\) with ordinality/g,
+    ),
+  ];
+
+  assert.equal(arrays.length, 8);
+  for (const [, prices] of arrays) {
+    assert.equal(prices.split(",").length, 360);
+  }
+  for (const symbol of [
+    "BTC",
+    "KLSI",
+    "GOLD",
+    "SMP500",
+    "BTC2",
+    "KLSI2",
+    "GOLD2",
+    "SMP5002",
+  ]) {
+    assert.match(migration, new RegExp(`'${symbol}'`));
   }
 });

@@ -8,6 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  stockInventory,
+  type StockRecord,
+} from "../stock-inventory";
 
 type Dataset = {
   id: number;
@@ -24,166 +28,26 @@ type Dataset = {
   updatedAt: string;
 };
 
-type StockRecord = {
-  id: number;
-  symbol: string;
-  fullName: string;
-  reference: string;
-  assetClass: string;
-  ticks: number;
-  firstPrice: number;
-  lastPrice: number;
-  lowPrice: number;
-  highPrice: number;
-  volatility: "Low" | "Moderate" | "High";
-  riskProfile: string;
-  gameplayRole: string;
-  summary: string;
-};
-
 type DetailProps = {
   datasetId: string;
   user: { name: string; email: string };
 };
 
-const stockInventory: StockRecord[] = [
-  {
-    id: 1,
-    symbol: "ETH",
-    fullName: "Ethereum",
-    reference: "ETH",
-    assetClass: "Digital asset",
-    ticks: 360,
-    firstPrice: 2200,
-    lastPrice: 3688.22,
-    lowPrice: 1984.4,
-    highPrice: 3826.71,
-    volatility: "High",
-    riskProfile: "Speculative growth",
-    gameplayRole: "High-upside asset with sharp intragame price swings.",
-    summary:
-      "A volatile digital asset sequence that rewards timing and a higher tolerance for risk.",
-  },
-  {
-    id: 2,
-    symbol: "AAPL",
-    fullName: "Apple Inc.",
-    reference: "AAPL",
-    assetClass: "US equity",
-    ticks: 360,
-    firstPrice: 145,
-    lastPrice: 119.52,
-    lowPrice: 112.84,
-    highPrice: 151.32,
-    volatility: "Moderate",
-    riskProfile: "Growth equity",
-    gameplayRole: "A familiar equity with a controlled downward scenario.",
-    summary:
-      "A large-cap technology equity sequence designed to test loss management and position sizing.",
-  },
-  {
-    id: 3,
-    symbol: "GOLD",
-    fullName: "Gold",
-    reference: "GOLD",
-    assetClass: "Commodity",
-    ticks: 360,
-    firstPrice: 1434.43,
-    lastPrice: 4513.87,
-    lowPrice: 1398.12,
-    highPrice: 4628.55,
-    volatility: "High",
-    riskProfile: "Defensive momentum",
-    gameplayRole: "A strong upward commodity cycle with accelerating gains.",
-    summary:
-      "A defensive commodity scenario that develops into the set’s strongest sustained price trend.",
-  },
-  {
-    id: 4,
-    symbol: "NASDAQ",
-    fullName: "NASDAQ Composite",
-    reference: "NASDAQ",
-    assetClass: "Market index",
-    ticks: 360,
-    firstPrice: 12000,
-    lastPrice: 13987.45,
-    lowPrice: 11742.8,
-    highPrice: 14210.32,
-    volatility: "Moderate",
-    riskProfile: "Diversified growth",
-    gameplayRole: "A broad technology-led index with steady appreciation.",
-    summary:
-      "A diversified market sequence that offers smoother growth than the individual high-risk assets.",
-  },
-  {
-    id: 5,
-    symbol: "NFT",
-    fullName: "NFT Market Index",
-    reference: "NFT",
-    assetClass: "Digital collectible",
-    ticks: 360,
-    firstPrice: 500,
-    lastPrice: 1411.08,
-    lowPrice: 428.15,
-    highPrice: 1518.62,
-    volatility: "High",
-    riskProfile: "Alternative speculative",
-    gameplayRole: "A fast-moving alternative asset with large upside.",
-    summary:
-      "A highly speculative collectible-market sequence built around rapid sentiment shifts.",
-  },
-  {
-    id: 6,
-    symbol: "REIT",
-    fullName: "Property REIT Index",
-    reference: "REIT",
-    assetClass: "Property trust",
-    ticks: 360,
-    firstPrice: 280,
-    lastPrice: 306.42,
-    lowPrice: 268.9,
-    highPrice: 315.76,
-    volatility: "Low",
-    riskProfile: "Income defensive",
-    gameplayRole: "A lower-volatility property allocation with modest growth.",
-    summary:
-      "A property-trust sequence that provides a steadier counterweight to the set’s speculative assets.",
-  },
-  {
-    id: 7,
-    symbol: "SILVER",
-    fullName: "Silver",
-    reference: "SILVER",
-    assetClass: "Commodity",
-    ticks: 360,
-    firstPrice: 24,
-    lastPrice: 22.81,
-    lowPrice: 21.66,
-    highPrice: 25.48,
-    volatility: "Moderate",
-    riskProfile: "Cyclical commodity",
-    gameplayRole: "A compact declining cycle for testing defensive decisions.",
-    summary:
-      "A cyclical commodity sequence with a mild loss profile and several short-lived rebounds.",
-  },
-  {
-    id: 8,
-    symbol: "DJI",
-    fullName: "Dow Jones Industrial Average",
-    reference: "DJI",
-    assetClass: "Market index",
-    ticks: 360,
-    firstPrice: 28000,
-    lastPrice: 37484.89,
-    lowPrice: 27418.67,
-    highPrice: 38112.4,
-    volatility: "Low",
-    riskProfile: "Diversified core",
-    gameplayRole: "A broad blue-chip benchmark with stable upward movement.",
-    summary:
-      "A diversified index sequence that models long-term compounding with relatively measured volatility.",
-  },
-];
+type StockPricePoint = {
+  period: number;
+  price: number;
+  updatedAt: string;
+};
+
+type StockPriceSeries = {
+  stockId: number;
+  symbol: string;
+  displayName: string;
+  assetClass: string;
+  scenario: string;
+  sourceName: string;
+  points: StockPricePoint[];
+};
 
 export function StockDatasetDetail({ datasetId, user }: DetailProps) {
   const [dataset, setDataset] = useState<Dataset | null>(null);
@@ -713,8 +577,81 @@ function StockRecordModal({
   onClose: () => void;
 }) {
   const modalRef = useRef<HTMLElement | null>(null);
-  const change = stockChange(stock);
+  const [series, setSeries] = useState<StockPriceSeries | null>(null);
+  const [draftValues, setDraftValues] = useState<string[]>([]);
+  const [loadingSeries, setLoadingSeries] = useState(true);
+  const [seriesError, setSeriesError] = useState("");
+  const [savingSeries, setSavingSeries] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch(`/api/stocks/${stock.id}/prices`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          series?: StockPriceSeries;
+          error?: string;
+        };
+        if (!response.ok || !payload.series) {
+          throw new Error(
+            payload.error ?? "The stock price sequence could not be loaded.",
+          );
+        }
+        setSeries(payload.series);
+        setDraftValues(
+          payload.series.points.map((point) => point.price.toFixed(2)),
+        );
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === "AbortError") {
+          return;
+        }
+        setSeriesError(
+          loadError instanceof Error
+            ? loadError.message
+            : "The stock price sequence could not be loaded.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingSeries(false);
+      });
+
+    return () => controller.abort();
+  }, [stock.id]);
+
+  const resolvedPrices = useMemo(
+    () =>
+      series?.points.map((point, index) => {
+        const parsed = Number(draftValues[index]);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : point.price;
+      }) ?? [],
+    [draftValues, series],
+  );
+  const summary = summarizePrices(resolvedPrices, stock);
+  const change = summary.change;
   const direction = change >= 0 ? "positive" : "negative";
+  const invalidRows = draftValues.filter(
+    (value) => value.trim() === "" || !Number.isFinite(Number(value)) || Number(value) < 0,
+  ).length;
+  const dirtyUpdates = useMemo(
+    () =>
+      series?.points.flatMap((point, index) => {
+        const price = Number(draftValues[index]);
+        if (
+          !Number.isFinite(price) ||
+          price < 0 ||
+          Math.abs(price - point.price) < 0.005
+        ) {
+          return [];
+        }
+        return [{ period: point.period, price }];
+      }) ?? [],
+    [draftValues, series],
+  );
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -728,8 +665,8 @@ function StockRecordModal({
       if (keyEvent.key !== "Tab" || !modalRef.current) return;
 
       const controls = Array.from(
-        modalRef.current.querySelectorAll<HTMLButtonElement>(
-          "button:not(:disabled)",
+        modalRef.current.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled)",
         ),
       );
       if (controls.length < 2) return;
@@ -751,6 +688,58 @@ function StockRecordModal({
       window.removeEventListener("keydown", handleModalKeys);
     };
   }, [onClose]);
+
+  function updateDraftPrice(index: number, value: string) {
+    setSaveMessage("");
+    setDraftValues((current) =>
+      current.map((price, priceIndex) => (priceIndex === index ? value : price)),
+    );
+  }
+
+  function resetDraftPrices() {
+    if (!series) return;
+    setDraftValues(series.points.map((point) => point.price.toFixed(2)));
+    setSeriesError("");
+    setSaveMessage("Unsaved edits cleared.");
+  }
+
+  async function savePriceChanges() {
+    if (!series || dirtyUpdates.length === 0 || invalidRows > 0) return;
+    setSavingSeries(true);
+    setSeriesError("");
+    setSaveMessage("");
+    try {
+      const response = await fetch(`/api/stocks/${stock.id}/prices`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: dirtyUpdates }),
+      });
+      const payload = (await response.json()) as {
+        series?: StockPriceSeries;
+        error?: string;
+      };
+      if (!response.ok || !payload.series) {
+        throw new Error(payload.error ?? "The price changes could not be saved.");
+      }
+      setSeries(payload.series);
+      setDraftValues(
+        payload.series.points.map((point) => point.price.toFixed(2)),
+      );
+      setSaveMessage(
+        `${dirtyUpdates.length} price ${
+          dirtyUpdates.length === 1 ? "point" : "points"
+        } saved.`,
+      );
+    } catch (saveError) {
+      setSeriesError(
+        saveError instanceof Error
+          ? saveError.message
+          : "The price changes could not be saved.",
+      );
+    } finally {
+      setSavingSeries(false);
+    }
+  }
 
   return (
     <div
@@ -800,11 +789,13 @@ function StockRecordModal({
             </div>
             <div>
               <span>REFERENCE</span>
-              <strong>{stock.reference}</strong>
+              <strong>{series?.sourceName ?? stock.reference}</strong>
             </div>
             <div>
               <span>PRICE COVERAGE</span>
-              <strong>{stock.ticks} ticks · 60 min</strong>
+              <strong>
+                {series?.points.length ?? stock.ticks} points · 60 min
+              </strong>
             </div>
           </section>
 
@@ -818,16 +809,165 @@ function StockRecordModal({
                 {change.toFixed(1)}%
               </strong>
               <span>
-                {money(stock.firstPrice)} → {money(stock.lastPrice)}
+                {money(summary.first)} → {money(summary.last)}
               </span>
             </div>
             <div>
               <p>SIMULATED RANGE</p>
               <strong>
-                {money(stock.lowPrice)} – {money(stock.highPrice)}
+                {money(summary.low)} – {money(summary.high)}
               </strong>
               <span>Low to high across 360 fixed price points</span>
             </div>
+          </section>
+
+          <section className="stock-sequence-workspace">
+            <div className="stock-sequence-heading">
+              <div>
+                <p className="eyebrow">RAW PRICE SEQUENCE</p>
+                <h3>All 360 editable data points</h3>
+                <span>
+                  Changes update the line immediately. Save to apply them to
+                  every dataset using this instrument.
+                </span>
+              </div>
+              <div className="stock-sequence-actions">
+                {dirtyUpdates.length > 0 && (
+                  <span>
+                    {dirtyUpdates.length} unsaved{" "}
+                    {dirtyUpdates.length === 1 ? "change" : "changes"}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={resetDraftPrices}
+                  disabled={dirtyUpdates.length === 0 || savingSeries}
+                >
+                  Reset
+                </button>
+                <button
+                  className="stock-save-prices"
+                  type="button"
+                  onClick={() => void savePriceChanges()}
+                  disabled={
+                    dirtyUpdates.length === 0 ||
+                    invalidRows > 0 ||
+                    savingSeries
+                  }
+                >
+                  {savingSeries
+                    ? "Saving…"
+                    : `Save ${
+                        dirtyUpdates.length > 0 ? dirtyUpdates.length : ""
+                      } changes`}
+                </button>
+              </div>
+            </div>
+
+            {loadingSeries && (
+              <div className="stock-series-loading" role="status">
+                <span />
+                Loading all 360 price points…
+              </div>
+            )}
+
+            {!loadingSeries && series && (
+              <>
+                <StockPriceChart
+                  symbol={series.symbol}
+                  prices={resolvedPrices}
+                />
+                <div className="stock-points-table-wrap">
+                  <table className="stock-points-table">
+                    <thead>
+                      <tr>
+                        <th>Period</th>
+                        <th>Game time</th>
+                        <th>Saved value</th>
+                        <th>Editable price (RM)</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {series.points.map((point, index) => {
+                        const parsed = Number(draftValues[index]);
+                        const valid =
+                          draftValues[index]?.trim() !== "" &&
+                          Number.isFinite(parsed) &&
+                          parsed >= 0;
+                        const changed =
+                          valid && Math.abs(parsed - point.price) >= 0.005;
+                        return (
+                          <tr
+                            key={point.period}
+                            className={changed ? "edited" : ""}
+                          >
+                            <td>{String(point.period).padStart(3, "0")}</td>
+                            <td>{formatGameTime(point.period)}</td>
+                            <td>{money(point.price)}</td>
+                            <td>
+                              <label>
+                                <span className="sr-only">
+                                  Price for period {point.period}
+                                </span>
+                                <span>RM</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="999999999999"
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  value={draftValues[index] ?? ""}
+                                  aria-invalid={!valid}
+                                  onChange={(event) =>
+                                    updateDraftPrice(index, event.target.value)
+                                  }
+                                />
+                              </label>
+                            </td>
+                            <td>
+                              <span
+                                className={
+                                  !valid
+                                    ? "stock-point-invalid"
+                                    : changed
+                                      ? "stock-point-edited"
+                                      : "stock-point-saved"
+                                }
+                              >
+                                {!valid
+                                  ? "Check value"
+                                  : changed
+                                    ? "Edited"
+                                    : "Saved"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {seriesError && (
+              <p className="stock-series-error" role="alert">
+                {seriesError}
+              </p>
+            )}
+            {invalidRows > 0 && (
+              <p className="stock-series-error" role="alert">
+                Correct {invalidRows} invalid{" "}
+                {invalidRows === 1 ? "value" : "values"} before saving.
+              </p>
+            )}
+            {saveMessage && (
+              <p className="stock-series-success" role="status">
+                <i />
+                {saveMessage}
+              </p>
+            )}
           </section>
 
           <section className="event-behavior-grid stock-behavior-grid">
@@ -876,6 +1016,97 @@ function StockRecordModal({
         </div>
       </article>
     </div>
+  );
+}
+
+function StockPriceChart({
+  symbol,
+  prices,
+}: {
+  symbol: string;
+  prices: number[];
+}) {
+  const width = 920;
+  const height = 250;
+  const padding = { top: 20, right: 18, bottom: 30, left: 54 };
+  const low = prices.length > 0 ? Math.min(...prices) : 0;
+  const high = prices.length > 0 ? Math.max(...prices) : 0;
+  const range = Math.max(high - low, 1);
+  const x = (index: number) =>
+    padding.left +
+    (index / Math.max(prices.length - 1, 1)) *
+      (width - padding.left - padding.right);
+  const y = (price: number) =>
+    padding.top +
+    ((high - price) / range) * (height - padding.top - padding.bottom);
+  const path = prices
+    .map(
+      (price, index) =>
+        `${index === 0 ? "M" : "L"} ${x(index).toFixed(2)} ${y(price).toFixed(2)}`,
+    )
+    .join(" ");
+  const areaPath =
+    prices.length > 0
+      ? `${path} L ${x(prices.length - 1).toFixed(2)} ${
+          height - padding.bottom
+        } L ${padding.left} ${height - padding.bottom} Z`
+      : "";
+
+  return (
+    <figure className="stock-price-chart">
+      <figcaption>
+        <span>{symbol} · 360-period line</span>
+        <span>
+          Low {money(low)} · High {money(high)}
+        </span>
+      </figcaption>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${symbol} price line across all 360 periods`}
+      >
+        <defs>
+          <linearGradient id={`stock-area-${symbol}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#00d3f3" stopOpacity="0.24" />
+            <stop offset="100%" stopColor="#00d3f3" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 0.25, 0.5, 0.75, 1].map((position) => {
+          const gridY =
+            padding.top +
+            position * (height - padding.top - padding.bottom);
+          const label = high - position * range;
+          return (
+            <g key={position}>
+              <line
+                x1={padding.left}
+                x2={width - padding.right}
+                y1={gridY}
+                y2={gridY}
+              />
+              <text x={padding.left - 10} y={gridY + 3}>
+                {compactNumber(label)}
+              </text>
+            </g>
+          );
+        })}
+        <path className="stock-chart-area" d={areaPath} fill={`url(#stock-area-${symbol})`} />
+        <path className="stock-chart-line" d={path} />
+        {[1, 90, 180, 270, 360].map((period) => (
+          <text
+            className="stock-chart-period"
+            key={period}
+            x={x(period - 1)}
+            y={height - 8}
+            textAnchor={
+              period === 1 ? "start" : period === 360 ? "end" : "middle"
+            }
+          >
+            {period}
+          </text>
+        ))}
+      </svg>
+    </figure>
   );
 }
 
@@ -1123,6 +1354,7 @@ function resolveStock(id: number): StockRecord {
       fullName: `Simulated Asset ${id}`,
       reference: `SRC-${id}`,
       assetClass: "Simulated asset",
+      scenario: "Scenario 1",
       ticks: 360,
       firstPrice: 100,
       lastPrice: 100,
@@ -1134,12 +1366,50 @@ function resolveStock(id: number): StockRecord {
         "A neutral fallback sequence used when a source asset is unavailable.",
       summary:
         "A fixed simulated asset sequence included in this reusable stock package.",
+      trendPoints: [100, 100],
     }
   );
 }
 
 function stockChange(stock: StockRecord) {
   return ((stock.lastPrice - stock.firstPrice) / stock.firstPrice) * 100;
+}
+
+function summarizePrices(prices: number[], fallback: StockRecord) {
+  if (prices.length === 0) {
+    return {
+      first: fallback.firstPrice,
+      last: fallback.lastPrice,
+      low: fallback.lowPrice,
+      high: fallback.highPrice,
+      change: stockChange(fallback),
+    };
+  }
+  const first = prices[0];
+  const last = prices[prices.length - 1];
+  return {
+    first,
+    last,
+    low: Math.min(...prices),
+    high: Math.max(...prices),
+    change: first === 0 ? 0 : ((last - first) / first) * 100,
+  };
+}
+
+function formatGameTime(period: number) {
+  const seconds = (period - 1) * 10;
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(
+    2,
+    "0",
+  )}`;
+}
+
+function compactNumber(value: number) {
+  return new Intl.NumberFormat("en-MY", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function money(value: number) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { stockInventory } from "./stock-inventory";
 
 type Dataset = {
   id: number;
@@ -17,41 +18,10 @@ type Dataset = {
   updatedAt: string;
 };
 
-type StockRecord = {
-  id: number;
-  symbol: string;
-  reference: string;
-  ticks: number;
-  firstPrice: number;
-  lastPrice: number;
-};
-
 type ModalState =
   | { mode: "create"; dataset: null }
   | { mode: "edit"; dataset: Dataset }
   | null;
-
-const stockInventory: StockRecord[] = [
-  { id: 1, symbol: "ETH", reference: "ETH", ticks: 360, firstPrice: 2200, lastPrice: 3688.22 },
-  { id: 2, symbol: "AAPL", reference: "AAPL", ticks: 360, firstPrice: 145, lastPrice: 119.52 },
-  { id: 3, symbol: "GOLD", reference: "GOLD", ticks: 360, firstPrice: 1434.43, lastPrice: 4513.87 },
-  { id: 4, symbol: "NASDAQ", reference: "NASDAQ", ticks: 360, firstPrice: 12000, lastPrice: 13987.45 },
-  { id: 5, symbol: "NFT", reference: "NFT", ticks: 360, firstPrice: 500, lastPrice: 1411.08 },
-  { id: 6, symbol: "REIT", reference: "REIT", ticks: 360, firstPrice: 280, lastPrice: 306.42 },
-  { id: 7, symbol: "SILVER", reference: "SILVER", ticks: 360, firstPrice: 24, lastPrice: 22.81 },
-  { id: 8, symbol: "DJI", reference: "DJI", ticks: 360, firstPrice: 28000, lastPrice: 37484.89 },
-];
-
-const sparkPatterns = [
-  [21, 28, 25, 34, 41, 47, 44, 53, 60, 67, 72, 78],
-  [71, 68, 72, 63, 58, 62, 52, 49, 44, 48, 39, 36],
-  [19, 26, 31, 29, 40, 46, 52, 58, 66, 72, 83, 92],
-  [42, 39, 47, 52, 48, 58, 55, 63, 69, 65, 75, 79],
-  [16, 23, 28, 38, 33, 44, 51, 62, 58, 72, 81, 89],
-  [38, 43, 39, 48, 52, 50, 59, 57, 63, 68, 65, 71],
-  [63, 57, 61, 54, 58, 49, 46, 52, 43, 39, 42, 37],
-  [34, 41, 38, 46, 51, 57, 54, 64, 68, 73, 79, 84],
-];
 
 export function StockDatasets({
   user,
@@ -463,7 +433,7 @@ export function StockDatasets({
                         </td>
                         <td data-label="Trend profile">
                           <Sparkline
-                            values={sparkPatterns[stock.id - 1]}
+                            values={stock.trendPoints}
                             positive={change >= 0}
                           />
                         </td>

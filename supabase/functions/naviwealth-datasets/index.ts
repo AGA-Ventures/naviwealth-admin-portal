@@ -38,6 +38,9 @@ type GameSettingsInput = {
   requireFacilitator?: unknown;
   updatedBy?: unknown;
 };
+type StockPriceUpdateInput = {
+  updates?: unknown;
+};
 
 type DatasetRow = {
   id: number;
@@ -80,10 +83,29 @@ type GameSettingsRow = {
   updated_at: string;
 };
 
+type StockInstrumentRow = {
+  id: number;
+  symbol: string;
+  display_name: string;
+  asset_class: string;
+  scenario: string;
+  source_name: string;
+};
+
+type StockPricePointRow = {
+  period: number;
+  price: number | string;
+  updated_at: string;
+};
+
 type RequestBody = {
   operation?: unknown;
   id?: unknown;
-  input?: DatasetInput | AdminUserInput | GameSettingsInput;
+  input?:
+    | DatasetInput
+    | AdminUserInput
+    | GameSettingsInput
+    | StockPriceUpdateInput;
 };
 
 class GatewayError extends Error {
@@ -188,6 +210,18 @@ Deno.serve(async (request) => {
               client,
               (body.input ?? {}) as GameSettingsInput,
             ),
+          ),
+        });
+      case "getStockPriceSeries":
+        return json({
+          series: await getStockPriceSeries(client, stockId(body.id)),
+        });
+      case "updateStockPrices":
+        return json({
+          series: await updateStockPrices(
+            client,
+            stockId(body.id),
+            (body.input ?? {}) as StockPriceUpdateInput,
           ),
         });
       default:
@@ -510,6 +544,60 @@ async function updateGameSettings(
   return data as GameSettingsRow;
 }
 
+async function getStockPriceSeries(
+  client: SupabaseClient,
+  instrumentId: number,
+) {
+  const [{ data: instrument, error: instrumentError }, { data, error }] =
+    await Promise.all([
+      client
+        .from("stock_instruments")
+        .select("*")
+        .eq("id", instrumentId)
+        .maybeSingle(),
+      client
+        .from("stock_price_points")
+        .select("period, price, updated_at")
+        .eq("stock_id", instrumentId)
+        .order("period", { ascending: true }),
+    ]);
+
+  if (instrumentError) throw databaseError(instrumentError);
+  if (!instrument) throw new GatewayError("Stock instrument not found.", 404);
+  if (error) throw databaseError(error);
+
+  const points = (data ?? []) as StockPricePointRow[];
+  if (points.length !== 360) {
+    throw new GatewayError(
+      "This stock sequence does not contain all 360 price points.",
+      409,
+    );
+  }
+
+  return mapStockPriceSeries(
+    instrument as StockInstrumentRow,
+    points,
+  );
+}
+
+async function updateStockPrices(
+  client: SupabaseClient,
+  instrumentId: number,
+  input: StockPriceUpdateInput,
+) {
+  const updates = sanitizeStockPriceUpdates(input.updates);
+  const { error } = await client.from("stock_price_points").upsert(
+    updates.map((update) => ({
+      stock_id: instrumentId,
+      period: update.period,
+      price: update.price,
+    })),
+    { onConflict: "stock_id,period" },
+  );
+  if (error) throw databaseError(error);
+  return getStockPriceSeries(client, instrumentId);
+}
+
 function mapDataset(row: DatasetRow) {
   return {
     id: row.id,
@@ -556,12 +644,75 @@ function mapGameSettings(row: GameSettingsRow) {
   };
 }
 
+function mapStockPriceSeries(
+  instrument: StockInstrumentRow,
+  points: StockPricePointRow[],
+) {
+  return {
+    stockId: instrument.id,
+    symbol: instrument.symbol,
+    displayName: instrument.display_name,
+    assetClass: instrument.asset_class,
+    scenario: instrument.scenario,
+    sourceName: instrument.source_name,
+    points: points.map((point) => ({
+      period: point.period,
+      price: Number(point.price),
+      updatedAt: point.updated_at,
+    })),
+  };
+}
+
 function id(value: unknown) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new GatewayError("Invalid dataset ID.", 400);
   }
   return parsed;
+}
+
+function stockId(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 8) {
+    throw new GatewayError("Invalid stock ID.", 400);
+  }
+  return parsed;
+}
+
+function sanitizeStockPriceUpdates(value: unknown) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 360) {
+    throw new GatewayError(
+      "Provide between 1 and 360 stock price updates.",
+      400,
+    );
+  }
+
+  const periods = new Set<number>();
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new GatewayError("Each stock price update is invalid.", 400);
+    }
+    const update = candidate as { period?: unknown; price?: unknown };
+    const period = Number(update.period);
+    const price = Number(update.price);
+    if (!Number.isInteger(period) || period < 1 || period > 360) {
+      throw new GatewayError(
+        "Stock price periods must be between 1 and 360.",
+        400,
+      );
+    }
+    if (!Number.isFinite(price) || price < 0 || price > 999_999_999_999) {
+      throw new GatewayError(
+        "Stock prices must be valid positive numbers.",
+        400,
+      );
+    }
+    if (periods.has(period)) {
+      throw new GatewayError("Stock price periods must be unique.", 400);
+    }
+    periods.add(period);
+    return { period, price: Math.round(price * 100) / 100 };
+  });
 }
 
 function cleanAdminUserName(value: unknown) {
