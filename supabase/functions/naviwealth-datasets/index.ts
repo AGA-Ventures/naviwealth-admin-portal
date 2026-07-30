@@ -41,6 +41,9 @@ type GameSettingsInput = {
 type StockPriceUpdateInput = {
   updates?: unknown;
 };
+type EventRecordInput = {
+  data?: unknown;
+};
 
 type DatasetRow = {
   id: number;
@@ -98,6 +101,16 @@ type StockPricePointRow = {
   updated_at: string;
 };
 
+type EventRecordRow = {
+  id: number;
+  dataset_id: number;
+  row_number: number;
+  source_file: string;
+  data: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+};
+
 type RequestBody = {
   operation?: unknown;
   id?: unknown;
@@ -105,7 +118,8 @@ type RequestBody = {
     | DatasetInput
     | AdminUserInput
     | GameSettingsInput
-    | StockPriceUpdateInput;
+    | StockPriceUpdateInput
+    | EventRecordInput;
 };
 
 class GatewayError extends Error {
@@ -222,6 +236,18 @@ Deno.serve(async (request) => {
             client,
             stockId(body.id),
             (body.input ?? {}) as StockPriceUpdateInput,
+          ),
+        });
+      case "listEventRecords":
+        return json({
+          records: await listEventRecords(client, id(body.id)),
+        });
+      case "updateEventRecord":
+        return json({
+          record: await updateEventRecord(
+            client,
+            eventRecordId(body.id),
+            (body.input ?? {}) as EventRecordInput,
           ),
         });
       default:
@@ -598,6 +624,55 @@ async function updateStockPrices(
   return getStockPriceSeries(client, instrumentId);
 }
 
+async function listEventRecords(
+  client: SupabaseClient,
+  datasetId: number,
+) {
+  const dataset = await findDataset(client, datasetId);
+  if (dataset.kind !== "event") {
+    throw new GatewayError("This package is not an event dataset.", 400);
+  }
+
+  const { data, error } = await client
+    .from("event_records")
+    .select("*")
+    .eq("dataset_id", datasetId)
+    .order("row_number", { ascending: true });
+  if (error) throw databaseError(error);
+  return ((data ?? []) as EventRecordRow[]).map(mapEventRecord);
+}
+
+async function findEventRecord(
+  client: SupabaseClient,
+  recordId: number,
+) {
+  const { data, error } = await client
+    .from("event_records")
+    .select("*")
+    .eq("id", recordId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!data) throw new GatewayError("Event record not found.", 404);
+  return data as EventRecordRow;
+}
+
+async function updateEventRecord(
+  client: SupabaseClient,
+  recordId: number,
+  input: EventRecordInput,
+) {
+  const current = await findEventRecord(client, recordId);
+  const eventData = sanitizeEventRecordData(input.data, current.data);
+  const { data, error } = await client
+    .from("event_records")
+    .update({ data: eventData })
+    .eq("id", recordId)
+    .select("*")
+    .single();
+  if (error) throw databaseError(error);
+  return mapEventRecord(data as EventRecordRow);
+}
+
 function mapDataset(row: DatasetRow) {
   return {
     id: row.id,
@@ -610,6 +685,18 @@ function mapDataset(row: DatasetRow) {
     reuseCount: row.reuse_count,
     validationState: row.validation_state,
     lastUsedAt: row.last_used_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapEventRecord(row: EventRecordRow) {
+  return {
+    id: row.id,
+    datasetId: row.dataset_id,
+    rowNumber: row.row_number,
+    sourceFile: row.source_file,
+    data: row.data,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -677,6 +764,58 @@ function stockId(value: unknown) {
     throw new GatewayError("Invalid stock ID.", 400);
   }
   return parsed;
+}
+
+function eventRecordId(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new GatewayError("Invalid event record ID.", 400);
+  }
+  return parsed;
+}
+
+function sanitizeEventRecordData(
+  value: unknown,
+  current: Record<string, string>,
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new GatewayError("Event details must be a field-value object.", 400);
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const expectedKeys = Object.keys(current).sort();
+  const receivedKeys = Object.keys(candidate).sort();
+  if (
+    expectedKeys.length === 0 ||
+    expectedKeys.length > 60 ||
+    expectedKeys.length !== receivedKeys.length ||
+    expectedKeys.some((key, index) => key !== receivedKeys[index])
+  ) {
+    throw new GatewayError(
+      "Event fields must match the imported source record.",
+      400,
+    );
+  }
+
+  const sanitized: Record<string, string> = {};
+  for (const key of expectedKeys) {
+    const fieldValue = candidate[key];
+    if (typeof fieldValue !== "string") {
+      throw new GatewayError(`Event field "${key}" must be text.`, 400);
+    }
+    if (fieldValue.length > 20_000) {
+      throw new GatewayError(
+        `Event field "${key}" is too long to save.`,
+        400,
+      );
+    }
+    sanitized[key] = fieldValue;
+  }
+
+  if (new TextEncoder().encode(JSON.stringify(sanitized)).length > 150_000) {
+    throw new GatewayError("This event record is too large to save.", 400);
+  }
+  return sanitized;
 }
 
 function sanitizeStockPriceUpdates(value: unknown) {

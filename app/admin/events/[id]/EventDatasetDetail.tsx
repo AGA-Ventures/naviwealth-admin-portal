@@ -55,6 +55,116 @@ type EventRecordSeed = Omit<
   "id" | "slot" | "categoryLabel" | "typeCode" | "rotationWindow"
 >;
 
+type EventRecordData = Record<string, string>;
+
+type StoredEventRecord = {
+  id: number;
+  datasetId: number;
+  rowNumber: number;
+  sourceFile: string;
+  data: EventRecordData;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type EventFieldGroup = {
+  title: string;
+  description: string;
+  fields: string[];
+};
+
+const eventFieldGroups: EventFieldGroup[] = [
+  {
+    title: "Event identity",
+    description: "Audience, routing, labels, and event classification.",
+    fields: [
+      "Event Remark",
+      "Age",
+      "Screen Set",
+      "Age Set",
+      "Event Screen",
+      "Title (ENG)",
+      "Title （CN）",
+      "Title",
+      "Type",
+      "Subtype",
+    ],
+  },
+  {
+    title: "Descriptions",
+    description: "Player-facing English and Chinese event copy.",
+    fields: [
+      "Short Description",
+      "Desciption (EN)",
+      "Description formula CN",
+      "Description",
+    ],
+  },
+  {
+    title: "Financial effects",
+    description: "Values applied to the player and game economy.",
+    fields: [
+      "Active Income",
+      "Passive Income",
+      "Cash Flow",
+      "Expense",
+      "D.Payment",
+      "Asset (Value)",
+      "Liability (Loan)",
+      "ROI",
+      "Happiness Point",
+      "Rate Of Change",
+      "Rate Of Changes",
+      "Change Amount",
+    ],
+  },
+  {
+    title: "Engine settings",
+    description: "Rules used when the simulator resolves this event.",
+    fields: [
+      "effected_items",
+      "Is Recurring",
+      "Event Role",
+      "Set Within Age",
+      "Remark",
+    ],
+  },
+  {
+    title: "Generated display text",
+    description: "Formatted values shown to players in the game.",
+    fields: [
+      "downpayment text",
+      "Asset text",
+      "Liability Text",
+      "Active Income Text",
+      "Expenses Text",
+      "Passive Income Text",
+      "Happiness PTS Text",
+      "ROItext",
+      "Cash flow text",
+    ],
+  },
+];
+
+const longEventFields = new Set([
+  "Short Description",
+  "Desciption (EN)",
+  "Description formula CN",
+  "Description",
+  "Title",
+  "Title (ENG)",
+  "Title （CN）",
+  "downpayment text",
+  "Asset text",
+  "Liability Text",
+  "Active Income Text",
+  "Expenses Text",
+  "Passive Income Text",
+  "Happiness PTS Text",
+  "ROItext",
+  "Cash flow text",
+]);
+
 const eventCategoryMeta: Record<
   EventCategory,
   { label: string; code: string }
@@ -347,6 +457,9 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventRecord | null>(null);
+  const [eventRecords, setEventRecords] = useState<StoredEventRecord[]>([]);
+  const [selectedStoredEvent, setSelectedStoredEvent] =
+    useState<StoredEventRecord | null>(null);
   const eventTriggerRef = useRef<HTMLTableRowElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -355,13 +468,17 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
     setLoading(true);
     setError("");
     try {
-      const [detailResponse, listResponse] = await Promise.all([
+      const [detailResponse, listResponse, recordsResponse] = await Promise.all([
         fetch(`/api/datasets/${datasetId}`, { cache: "no-store" }),
         fetch("/api/datasets", { cache: "no-store" }),
+        fetch(`/api/event-sets/${datasetId}/records`, {
+          cache: "no-store",
+        }),
       ]);
-      const [detailPayload, listPayload] = await Promise.all([
+      const [detailPayload, listPayload, recordsPayload] = await Promise.all([
         detailResponse.json(),
         listResponse.json(),
+        recordsResponse.json(),
       ]);
       if (!detailResponse.ok) {
         throw new Error(detailPayload.error ?? "Event dataset not found.");
@@ -369,11 +486,17 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
       if (!listResponse.ok) {
         throw new Error(listPayload.error ?? "Dataset library unavailable.");
       }
+      if (!recordsResponse.ok) {
+        throw new Error(
+          recordsPayload.error ?? "Event records are unavailable.",
+        );
+      }
       if (detailPayload.dataset.kind !== "event") {
         throw new Error("This package is not an event dataset.");
       }
       setDataset(detailPayload.dataset);
       setDatasets(listPayload.datasets);
+      setEventRecords(recordsPayload.records ?? []);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -438,7 +561,8 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
     setToast("Event membership copied.");
   }
 
-  const cycleMinutes = dataset?.itemCount ?? 0;
+  const recordCount = eventRecords.length || dataset?.itemCount || 0;
+  const cycleMinutes = recordCount;
 
   function openEventRecord(
     eventRecord: EventRecord,
@@ -450,6 +574,19 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
 
   function closeEventRecord() {
     setSelectedEvent(null);
+    window.requestAnimationFrame(() => eventTriggerRef.current?.focus());
+  }
+
+  function openStoredEventRecord(
+    eventRecord: StoredEventRecord,
+    trigger: HTMLTableRowElement,
+  ) {
+    eventTriggerRef.current = trigger;
+    setSelectedStoredEvent(eventRecord);
+  }
+
+  function closeStoredEventRecord() {
+    setSelectedStoredEvent(null);
     window.requestAnimationFrame(() => eventTriggerRef.current?.focus());
   }
 
@@ -599,8 +736,12 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
               <section className="detail-metric-grid">
                 <DetailMetric
                   label="Mapped events"
-                  value={`${dataset.itemCount}`}
-                  meta="unique membership IDs"
+                  value={`${recordCount}`}
+                  meta={
+                    eventRecords.length > 0
+                      ? "complete imported rows"
+                      : "unique membership IDs"
+                  }
                   tone="purple"
                 />
                 <DetailMetric
@@ -634,7 +775,9 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                       <p className="eyebrow event-eyebrow">ROTATION ORDER</p>
                       <h2>Event set membership</h2>
                       <span>
-                        Ordered source IDs used to build the game rotation.
+                        {eventRecords.length > 0
+                          ? "Every imported CSV row is available to review and edit."
+                          : "Ordered source IDs used to build the game rotation."}
                       </span>
                     </div>
                     <button type="button" onClick={() => void copyMembers()}>
@@ -644,66 +787,158 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                   <div className="membership-table-wrap">
                     <table className="membership-table">
                       <thead>
-                        <tr>
-                          <th>Slot</th>
-                          <th>Event ID</th>
-                          <th>Rotation window</th>
-                          <th>Membership</th>
-                          <th>Source resolution</th>
-                        </tr>
+                        {eventRecords.length > 0 ? (
+                          <tr>
+                            <th>Row</th>
+                            <th>Age</th>
+                            <th>Event</th>
+                            <th>Type</th>
+                            <th>Screen</th>
+                            <th>Financial effect</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th>Slot</th>
+                            <th>Event ID</th>
+                            <th>Rotation window</th>
+                            <th>Membership</th>
+                            <th>Source resolution</th>
+                          </tr>
+                        )}
                       </thead>
                       <tbody>
-                        {dataset.memberIds.map((memberId, index) => (
-                          <tr
-                            className="membership-row-action"
-                            key={`${memberId}-${index}`}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`View event ${memberId} details`}
-                            onClick={(event) =>
-                              openEventRecord(
-                                resolveEventRecord(memberId, index),
-                                event.currentTarget,
-                              )
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                openEventRecord(
-                                  resolveEventRecord(memberId, index),
-                                  event.currentTarget,
-                                );
-                              }
-                            }}
-                          >
-                            <td>
-                              <span className="slot-number">
-                                {String(index + 1).padStart(2, "0")}
-                              </span>
-                            </td>
-                            <td>
-                              <code>#{memberId}</code>
-                            </td>
-                            <td>
-                              {formatWindow(index * 60, (index + 1) * 60 - 1)}
-                            </td>
-                            <td>
-                              <span className="event-mode actionable">
-                                <i />
-                                Included
-                              </span>
-                            </td>
-                            <td>
-                              <span className="source-resolution event-row-open">
-                                Runtime event library
-                                <b>View event</b>
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {eventRecords.length > 0
+                          ? eventRecords.map((record) => (
+                              <tr
+                                className="membership-row-action imported-event-row"
+                                key={record.id}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`View ${eventRecordTitle(record.data)} details`}
+                                onClick={(event) =>
+                                  openStoredEventRecord(
+                                    record,
+                                    event.currentTarget,
+                                  )
+                                }
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    openStoredEventRecord(
+                                      record,
+                                      event.currentTarget,
+                                    );
+                                  }
+                                }}
+                              >
+                                <td>
+                                  <span className="slot-number">
+                                    {String(record.rowNumber).padStart(2, "0")}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{record.data.Age || "—"}</strong>
+                                  <small>
+                                    Set {record.data["Age Set"] || "—"}
+                                  </small>
+                                </td>
+                                <td>
+                                  <strong>{eventRecordTitle(record.data)}</strong>
+                                  <small>
+                                    {record.data["Title （CN）"] ||
+                                      record.data.Title ||
+                                      "Open all 40 event fields"}
+                                  </small>
+                                </td>
+                                <td>
+                                  <span
+                                    className={`imported-event-type ${eventTypeTone(
+                                      record.data.Type,
+                                    )}`}
+                                  >
+                                    {record.data.Type || "Unclassified"}
+                                  </span>
+                                  <small>{record.data.Subtype || "—"}</small>
+                                </td>
+                                <td>
+                                  <strong>
+                                    {eventScreenLabel(record.data["Event Screen"])}
+                                  </strong>
+                                  <small>
+                                    Screen set{" "}
+                                    {record.data["Screen Set"] || "—"}
+                                  </small>
+                                </td>
+                                <td>
+                                  <strong>
+                                    {eventFinancialEffect(record.data)}
+                                  </strong>
+                                  <small className="event-row-open">
+                                    Edit all fields
+                                  </small>
+                                </td>
+                              </tr>
+                            ))
+                          : dataset.memberIds.map((memberId, index) => (
+                              <tr
+                                className="membership-row-action"
+                                key={`${memberId}-${index}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`View event ${memberId} details`}
+                                onClick={(event) =>
+                                  openEventRecord(
+                                    resolveEventRecord(memberId, index),
+                                    event.currentTarget,
+                                  )
+                                }
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    openEventRecord(
+                                      resolveEventRecord(memberId, index),
+                                      event.currentTarget,
+                                    );
+                                  }
+                                }}
+                              >
+                                <td>
+                                  <span className="slot-number">
+                                    {String(index + 1).padStart(2, "0")}
+                                  </span>
+                                </td>
+                                <td>
+                                  <code>#{memberId}</code>
+                                </td>
+                                <td>
+                                  {formatWindow(
+                                    index * 60,
+                                    (index + 1) * 60 - 1,
+                                  )}
+                                </td>
+                                <td>
+                                  <span className="event-mode actionable">
+                                    <i />
+                                    Included
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="source-resolution event-row-open">
+                                    Runtime event library
+                                    <b>View event</b>
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
                       </tbody>
                     </table>
-                    {dataset.memberIds.length === 0 && (
+                    {recordCount === 0 && (
                       <div className="membership-empty">
                         <span>◇</span>
                         <strong>No events mapped</strong>
@@ -812,12 +1047,311 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
         />
       )}
 
+      {selectedStoredEvent && dataset && (
+        <ImportedEventRecordModal
+          record={selectedStoredEvent}
+          datasetName={dataset.name}
+          onClose={closeStoredEventRecord}
+          onSaved={(updated) => {
+            setEventRecords((current) =>
+              current.map((record) =>
+                record.id === updated.id ? updated : record,
+              ),
+            );
+            setSelectedStoredEvent(updated);
+            setToast(`Row ${updated.rowNumber} saved.`);
+          }}
+        />
+      )}
+
       {toast && (
         <div className="admin-toast" role="status">
           <span className="status-dot" />
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function ImportedEventRecordModal({
+  record,
+  datasetName,
+  onClose,
+  onSaved,
+}: {
+  record: StoredEventRecord;
+  datasetName: string;
+  onClose: () => void;
+  onSaved: (record: StoredEventRecord) => void;
+}) {
+  const modalRef = useRef<HTMLElement | null>(null);
+  const [draft, setDraft] = useState<EventRecordData>({ ...record.data });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyboard(keyEvent: KeyboardEvent) {
+      if (keyEvent.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (keyEvent.key !== "Tab" || !modalRef.current) return;
+
+      const controls = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled)",
+        ),
+      );
+      if (controls.length < 2) return;
+
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (keyEvent.shiftKey && document.activeElement === first) {
+        keyEvent.preventDefault();
+        last.focus();
+      } else if (!keyEvent.shiftKey && document.activeElement === last) {
+        keyEvent.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyboard);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyboard);
+    };
+  }, [onClose]);
+
+  const changedFields = Object.keys(draft).filter(
+    (field) => draft[field] !== record.data[field],
+  );
+  const knownFields = new Set(eventFieldGroups.flatMap((group) => group.fields));
+  const additionalFields = Object.keys(draft).filter(
+    (field) => !knownFields.has(field),
+  );
+  const groups =
+    additionalFields.length > 0
+      ? [
+          ...eventFieldGroups,
+          {
+            title: "Additional imported fields",
+            description: "Other columns preserved from the source file.",
+            fields: additionalFields,
+          },
+        ]
+      : eventFieldGroups;
+
+  async function saveRecord(formEvent: FormEvent) {
+    formEvent.preventDefault();
+    if (changedFields.length === 0 || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/event-records/${record.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: draft }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "The event could not be saved.");
+      }
+      onSaved(payload.record);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "The event could not be saved.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop imported-event-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <article
+        ref={modalRef}
+        className="imported-event-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="imported-event-title"
+        aria-describedby="imported-event-description"
+        onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}
+      >
+        <header className="imported-event-header">
+          <div
+            className={`event-record-type ${eventTypeTone(record.data.Type)}`}
+            aria-hidden="true"
+          >
+            <span>{eventTypeCode(record.data.Type)}</span>
+          </div>
+          <div>
+            <p
+              className={`event-record-eyebrow ${eventTypeTone(
+                record.data.Type,
+              )}`}
+            >
+              ROW {String(record.rowNumber).padStart(2, "0")} ·{" "}
+              {record.data.Type || "EVENT"}
+            </p>
+            <h2 id="imported-event-title">{eventRecordTitle(draft)}</h2>
+            <p id="imported-event-description">
+              {draft["Short Description"] ||
+                draft["Desciption (EN)"] ||
+                "Edit the complete imported event record below."}
+            </p>
+          </div>
+          <button
+            autoFocus
+            type="button"
+            aria-label="Close event editor"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+
+        <form onSubmit={saveRecord}>
+          <section className="imported-event-summary">
+            <div>
+              <span>AGE</span>
+              <strong>{draft.Age || "—"}</strong>
+            </div>
+            <div>
+              <span>SCREEN</span>
+              <strong>{eventScreenLabel(draft["Event Screen"])}</strong>
+            </div>
+            <div>
+              <span>TYPE</span>
+              <strong>{draft.Type || "—"}</strong>
+            </div>
+            <div>
+              <span>FINANCIAL EFFECT</span>
+              <strong>{eventFinancialEffect(draft)}</strong>
+            </div>
+          </section>
+
+          <div className="imported-event-form-body">
+            <div className="imported-event-source">
+              <span>EVENT SET</span>
+              <strong>{datasetName}</strong>
+              <span>SOURCE FILE</span>
+              <strong>{sourceFileName(record.sourceFile)}</strong>
+              <span>FIELDS</span>
+              <strong>{Object.keys(draft).length} editable values</strong>
+            </div>
+
+            {groups.map((group) => (
+              <section className="event-field-section" key={group.title}>
+                <div className="event-field-section-heading">
+                  <div>
+                    <h3>{group.title}</h3>
+                    <p>{group.description}</p>
+                  </div>
+                  <span>{group.fields.length} fields</span>
+                </div>
+                <div className="event-field-grid">
+                  {group.fields.map((field) => {
+                    const fieldId = `event-${record.id}-${field.replace(
+                      /[^a-zA-Z0-9]+/g,
+                      "-",
+                    )}`;
+                    const value = draft[field] ?? "";
+                    const isLong =
+                      longEventFields.has(field) ||
+                      value.includes("\n") ||
+                      value.length > 120;
+                    return (
+                      <label
+                        className={isLong ? "event-field wide" : "event-field"}
+                        htmlFor={fieldId}
+                        key={field}
+                      >
+                        <span>
+                          {field}
+                          {draft[field] !== record.data[field] && <i>Edited</i>}
+                        </span>
+                        {isLong ? (
+                          <textarea
+                            id={fieldId}
+                            rows={value.length > 260 ? 5 : 3}
+                            value={value}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                [field]: event.target.value,
+                              }))
+                            }
+                          />
+                        ) : (
+                          <input
+                            id={fieldId}
+                            type="text"
+                            value={value}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                [field]: event.target.value,
+                              }))
+                            }
+                          />
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <footer className="imported-event-footer">
+            <div>
+              <strong>
+                {changedFields.length === 0
+                  ? "All changes saved"
+                  : `${changedFields.length} unsaved ${
+                      changedFields.length === 1 ? "field" : "fields"
+                    }`}
+              </strong>
+              <span>
+                Original row order and all imported columns are preserved.
+              </span>
+              {error && <p role="alert">{error}</p>}
+            </div>
+            <div>
+              <button
+                type="button"
+                disabled={changedFields.length === 0 || saving}
+                onClick={() => {
+                  setDraft({ ...record.data });
+                  setError("");
+                }}
+              >
+                Reset changes
+              </button>
+              <button type="button" onClick={onClose}>
+                Close
+              </button>
+              <button
+                className="primary"
+                type="submit"
+                disabled={changedFields.length === 0 || saving}
+              >
+                {saving ? "Saving…" : "Save event"}
+              </button>
+            </div>
+          </footer>
+        </form>
+      </article>
     </div>
   );
 }
@@ -981,6 +1515,58 @@ function EventRecordModal({
       </article>
     </div>
   );
+}
+
+function eventRecordTitle(data: EventRecordData) {
+  return (
+    data["Title (ENG)"] ||
+    data["Short Description"] ||
+    data.Title ||
+    "Untitled event"
+  );
+}
+
+function eventTypeTone(type: string | undefined): EventCategory {
+  const normalized = type?.trim().toLowerCase();
+  if (normalized === "capital gain") return "capital-gain";
+  if (normalized === "cash flow" || normalized === "cashflow") {
+    return "cashflow";
+  }
+  if (normalized === "expenses" || normalized === "expense") {
+    return "expenses";
+  }
+  return "market";
+}
+
+function eventTypeCode(type: string | undefined) {
+  return eventCategoryMeta[eventTypeTone(type)].code;
+}
+
+function eventScreenLabel(screen: string | undefined) {
+  if (screen?.trim().toUpperCase() === "A") return "Side A";
+  if (screen?.trim().toUpperCase() === "B") return "Side B";
+  if (screen?.trim().toUpperCase() === "ALL") return "All sides";
+  return screen?.trim() || "Not set";
+}
+
+function eventFinancialEffect(data: EventRecordData) {
+  const candidates = [
+    ["Cash flow", data["Cash Flow"]],
+    ["Expense", data.Expense],
+    ["Asset", data["Asset (Value)"]],
+    ["Income", data["Active Income"]],
+    ["Change", data["Rate Of Change"] || data["Rate Of Changes"]],
+  ];
+  const effect = candidates.find(([, value]) => {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized !== "" && normalized !== "0" && normalized !== "0.00";
+  });
+  if (!effect) return "No direct value";
+  return `${effect[0]} ${effect[1]}`;
+}
+
+function sourceFileName(path: string) {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 function resolveEventRecord(memberId: number, index: number): EventRecord {
