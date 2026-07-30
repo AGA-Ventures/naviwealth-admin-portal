@@ -74,9 +74,10 @@ test("shows real imported rows and edits every source field", async () => {
     source("supabase/functions/naviwealth-datasets/index.ts"),
   ]);
 
-  assert.match(detail, /className="membership-row-action imported-event-row"/);
+  assert.match(detail, /className="event-membership-card-grid"/);
+  assert.match(detail, /className=\{`event-member-card \$\{eventTone\}`\}/);
+  assert.match(detail, /Open game preview/);
   assert.match(detail, /Open any row as a game-screen sample/);
-  assert.match(detail, /Preview · edit available/);
   assert.match(detail, /<ImportedEventRecordModal/);
   assert.match(detail, /useState<"preview" \| "edit">\("preview"\)/);
   assert.match(detail, /SAMPLE GAME SCREEN/);

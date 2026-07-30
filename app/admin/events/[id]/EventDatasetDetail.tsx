@@ -475,7 +475,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   const [eventRecords, setEventRecords] = useState<StoredEventRecord[]>([]);
   const [selectedStoredEvent, setSelectedStoredEvent] =
     useState<StoredEventRecord | null>(null);
-  const eventTriggerRef = useRef<HTMLTableRowElement | null>(null);
+  const eventTriggerRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
 
@@ -620,7 +620,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
 
   function openEventRecord(
     eventRecord: EventRecord,
-    trigger: HTMLTableRowElement,
+    trigger: HTMLElement,
   ) {
     eventTriggerRef.current = trigger;
     setSelectedEvent(eventRecord);
@@ -633,7 +633,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
 
   function openStoredEventRecord(
     eventRecord: StoredEventRecord,
-    trigger: HTMLTableRowElement,
+    trigger: HTMLElement,
   ) {
     eventTriggerRef.current = trigger;
     setSelectedStoredEvent(eventRecord);
@@ -938,19 +938,88 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                       Copy IDs
                     </button>
                   </div>
-                  <div className="membership-table-wrap">
-                    <table className="membership-table">
-                      <thead>
-                        {eventRecords.length > 0 ? (
-                          <tr>
-                            <th>Row</th>
-                            <th>Age</th>
-                            <th>Event</th>
-                            <th>Type</th>
-                            <th>Screen</th>
-                            <th>Financial effect</th>
-                          </tr>
-                        ) : (
+                  {eventRecords.length > 0 ? (
+                    <div className="event-membership-card-grid">
+                      {eventRecords.map((record) => {
+                        const eventTone = eventTypeTone(record.data.Type);
+                        return (
+                          <button
+                            className={`event-member-card ${eventTone}`}
+                            type="button"
+                            key={record.id}
+                            aria-label={`View ${eventRecordTitle(record.data)} details`}
+                            onClick={(event) =>
+                              openStoredEventRecord(
+                                record,
+                                event.currentTarget,
+                              )
+                            }
+                          >
+                            <span className="event-member-card-top">
+                              <span>
+                                ROW{" "}
+                                {String(record.rowNumber).padStart(2, "0")}
+                              </span>
+                              <span
+                                className={`imported-event-type ${eventTone}`}
+                              >
+                                {record.data.Type || "Unclassified"}
+                              </span>
+                            </span>
+
+                            <span className="event-member-card-title">
+                              <strong>{eventRecordTitle(record.data)}</strong>
+                              <small>
+                                {record.data["Title （CN）"] ||
+                                  record.data.Title ||
+                                  "No localized title"}
+                              </small>
+                            </span>
+
+                            <span className="event-member-card-meta">
+                              <span>
+                                <small>AGE</small>
+                                <strong>{record.data.Age || "—"}</strong>
+                                <em>Set {record.data["Age Set"] || "—"}</em>
+                              </span>
+                              <span>
+                                <small>SCREEN</small>
+                                <strong>
+                                  {eventScreenLabel(
+                                    record.data["Event Screen"],
+                                  )}
+                                </strong>
+                                <em>
+                                  Set {record.data["Screen Set"] || "—"}
+                                </em>
+                              </span>
+                              <span>
+                                <small>SUBTYPE</small>
+                                <strong>{record.data.Subtype || "—"}</strong>
+                                <em>{eventTypeCode(record.data.Type)}</em>
+                              </span>
+                            </span>
+
+                            <span className="event-member-card-impact">
+                              <span>
+                                <small>FINANCIAL EFFECT</small>
+                                <strong>
+                                  {eventFinancialEffect(
+                                    record.data,
+                                    dataset.currencyCode,
+                                  )}
+                                </strong>
+                              </span>
+                              <span>Open game preview</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="membership-table-wrap">
+                      <table className="membership-table">
+                        <thead>
                           <tr>
                             <th>Slot</th>
                             <th>Event ID</th>
@@ -958,151 +1027,73 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                             <th>Membership</th>
                             <th>Source resolution</th>
                           </tr>
-                        )}
-                      </thead>
-                      <tbody>
-                        {eventRecords.length > 0
-                          ? eventRecords.map((record) => (
-                              <tr
-                                className="membership-row-action imported-event-row"
-                                key={record.id}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`View ${eventRecordTitle(record.data)} details`}
-                                onClick={(event) =>
-                                  openStoredEventRecord(
-                                    record,
-                                    event.currentTarget,
-                                  )
-                                }
-                                onKeyDown={(event) => {
-                                  if (
-                                    event.key === "Enter" ||
-                                    event.key === " "
-                                  ) {
-                                    event.preventDefault();
-                                    openStoredEventRecord(
-                                      record,
-                                      event.currentTarget,
-                                    );
-                                  }
-                                }}
-                              >
-                                <td>
-                                  <span className="slot-number">
-                                    {String(record.rowNumber).padStart(2, "0")}
-                                  </span>
-                                </td>
-                                <td>
-                                  <strong>{record.data.Age || "—"}</strong>
-                                  <small>
-                                    Set {record.data["Age Set"] || "—"}
-                                  </small>
-                                </td>
-                                <td>
-                                  <strong>{eventRecordTitle(record.data)}</strong>
-                                  <small>
-                                    {record.data["Title （CN）"] ||
-                                      record.data.Title ||
-                                      "Open all 40 event fields"}
-                                  </small>
-                                </td>
-                                <td>
-                                  <span
-                                    className={`imported-event-type ${eventTypeTone(
-                                      record.data.Type,
-                                    )}`}
-                                  >
-                                    {record.data.Type || "Unclassified"}
-                                  </span>
-                                  <small>{record.data.Subtype || "—"}</small>
-                                </td>
-                                <td>
-                                  <strong>
-                                    {eventScreenLabel(record.data["Event Screen"])}
-                                  </strong>
-                                  <small>
-                                    Screen set{" "}
-                                    {record.data["Screen Set"] || "—"}
-                                  </small>
-                                </td>
-                                <td>
-                                  <strong>
-                                    {eventFinancialEffect(
-                                      record.data,
-                                      dataset.currencyCode,
-                                    )}
-                                  </strong>
-                                  <small className="event-row-open">
-                                    Preview · edit available
-                                  </small>
-                                </td>
-                              </tr>
-                            ))
-                          : dataset.memberIds.map((memberId, index) => (
-                              <tr
-                                className="membership-row-action"
-                                key={`${memberId}-${index}`}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`View event ${memberId} details`}
-                                onClick={(event) =>
+                        </thead>
+                        <tbody>
+                          {dataset.memberIds.map((memberId, index) => (
+                            <tr
+                              className="membership-row-action"
+                              key={`${memberId}-${index}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`View event ${memberId} details`}
+                              onClick={(event) =>
+                                openEventRecord(
+                                  resolveEventRecord(memberId, index),
+                                  event.currentTarget,
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
+                                  event.preventDefault();
                                   openEventRecord(
                                     resolveEventRecord(memberId, index),
                                     event.currentTarget,
-                                  )
+                                  );
                                 }
-                                onKeyDown={(event) => {
-                                  if (
-                                    event.key === "Enter" ||
-                                    event.key === " "
-                                  ) {
-                                    event.preventDefault();
-                                    openEventRecord(
-                                      resolveEventRecord(memberId, index),
-                                      event.currentTarget,
-                                    );
-                                  }
-                                }}
-                              >
-                                <td>
-                                  <span className="slot-number">
-                                    {String(index + 1).padStart(2, "0")}
-                                  </span>
-                                </td>
-                                <td>
-                                  <code>#{memberId}</code>
-                                </td>
-                                <td>
-                                  {formatWindow(
-                                    index * 60,
-                                    (index + 1) * 60 - 1,
-                                  )}
-                                </td>
-                                <td>
-                                  <span className="event-mode actionable">
-                                    <i />
-                                    Included
-                                  </span>
-                                </td>
-                                <td>
-                                  <span className="source-resolution event-row-open">
-                                    Runtime event library
-                                    <b>View event</b>
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                      </tbody>
-                    </table>
-                    {recordCount === 0 && (
-                      <div className="membership-empty">
-                        <span>◇</span>
-                        <strong>No events mapped</strong>
-                        <p>Configure the set to add event IDs.</p>
-                      </div>
-                    )}
-                  </div>
+                              }}
+                            >
+                              <td>
+                                <span className="slot-number">
+                                  {String(index + 1).padStart(2, "0")}
+                                </span>
+                              </td>
+                              <td>
+                                <code>#{memberId}</code>
+                              </td>
+                              <td>
+                                {formatWindow(
+                                  index * 60,
+                                  (index + 1) * 60 - 1,
+                                )}
+                              </td>
+                              <td>
+                                <span className="event-mode actionable">
+                                  <i />
+                                  Included
+                                </span>
+                              </td>
+                              <td>
+                                <span className="source-resolution event-row-open">
+                                  Runtime event library
+                                  <b>View event</b>
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {recordCount === 0 && (
+                        <div className="membership-empty">
+                          <span>◇</span>
+                          <strong>No events mapped</strong>
+                          <p>Configure the set to add event IDs.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <aside className="event-detail-aside">

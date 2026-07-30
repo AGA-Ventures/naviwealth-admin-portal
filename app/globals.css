@@ -3429,6 +3429,187 @@ article.green .event-type-track i {
   overflow-x: auto;
 }
 
+.event-membership-card-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+  gap: 11px;
+  border-top: 1px solid rgba(29, 41, 61, 0.58);
+  background: rgba(2, 6, 24, 0.28);
+}
+
+.event-member-card {
+  min-width: 0;
+  min-height: 188px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #223149;
+  border-top-width: 2px;
+  border-radius: 10px;
+  outline: 0;
+  color: #8d9ab0;
+  background: rgba(8, 16, 34, 0.92);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.event-member-card.capital-gain {
+  border-top-color: rgba(194, 122, 255, 0.72);
+}
+
+.event-member-card.cashflow {
+  border-top-color: rgba(0, 211, 243, 0.72);
+}
+
+.event-member-card.expenses {
+  border-top-color: rgba(253, 199, 0, 0.72);
+}
+
+.event-member-card.market {
+  border-top-color: rgba(5, 223, 114, 0.72);
+}
+
+.event-member-card:hover {
+  border-color: rgba(0, 211, 243, 0.44);
+  background: rgba(11, 22, 44, 0.96);
+  box-shadow: 0 16px 32px -24px rgba(0, 211, 243, 0.45);
+  transform: translateY(-1px);
+}
+
+.event-member-card:focus-visible {
+  border-color: var(--cyan);
+  box-shadow:
+    0 0 0 3px rgba(0, 211, 243, 0.1),
+    0 16px 32px -24px rgba(0, 211, 243, 0.45);
+}
+
+.event-member-card > span,
+.event-member-card-title strong,
+.event-member-card-title small,
+.event-member-card-meta small,
+.event-member-card-meta strong,
+.event-member-card-meta em,
+.event-member-card-impact small,
+.event-member-card-impact strong {
+  display: block;
+}
+
+.event-member-card-top {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.event-member-card-top > span:first-child {
+  color: #52627b;
+  font: 7px/1.2 var(--font-geist-mono), monospace;
+  letter-spacing: 0.12em;
+}
+
+.event-member-card-title {
+  min-height: 56px;
+  margin-top: 14px;
+}
+
+.event-member-card-title strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #d6deea;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.event-member-card-title small {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 6px;
+  color: #56657c;
+  font-size: 7px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.event-member-card-meta {
+  padding: 10px 0;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid rgba(29, 41, 61, 0.72);
+  border-bottom: 1px solid rgba(29, 41, 61, 0.72);
+}
+
+.event-member-card-meta > span {
+  min-width: 0;
+}
+
+.event-member-card-meta small,
+.event-member-card-impact small {
+  color: #44536b;
+  font: 6px/1.2 var(--font-geist-mono), monospace;
+  letter-spacing: 0.09em;
+}
+
+.event-member-card-meta strong {
+  overflow: hidden;
+  margin-top: 5px;
+  color: #aeb9c9;
+  font-size: 8px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-member-card-meta em {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #536178;
+  font-size: 6px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-member-card-impact {
+  margin-top: auto;
+  padding-top: 11px;
+  display: flex !important;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-member-card-impact > span:first-child {
+  min-width: 0;
+}
+
+.event-member-card-impact strong {
+  overflow: hidden;
+  margin-top: 5px;
+  color: #c8d2df;
+  font: 700 8px/1.2 var(--font-geist-mono), monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-member-card-impact > span:last-child {
+  flex: 0 0 auto;
+  color: #b96af6;
+  font-size: 7px;
+  font-weight: 650;
+}
+
 .membership-table {
   width: 100%;
   min-width: 680px;
