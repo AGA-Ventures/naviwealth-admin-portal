@@ -12,15 +12,29 @@ type Dataset = {
   itemCount: number;
   reuseCount: number;
   validationState: "valid" | "warning";
+  countryCode: CountryCode;
+  currencyCode: "MYR" | "CNY";
+  datasetFamilyId: string;
+  localizationState: "localized" | "needs_review";
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
+type CountryCode = "MY" | "CN";
+
 type ModalState =
-  | { mode: "create"; dataset: null }
+  | { mode: "create"; dataset: null; countryCode: CountryCode }
   | { mode: "edit"; dataset: Dataset }
   | null;
+
+const countryMeta: Record<
+  CountryCode,
+  { label: string; currencyCode: "MYR" | "CNY"; display: string }
+> = {
+  MY: { label: "Malaysia", currencyCode: "MYR", display: "RM" },
+  CN: { label: "China", currencyCode: "CNY", display: "RMB" },
+};
 
 const eventCategories = [
   {
@@ -94,6 +108,7 @@ export function EventDatasets({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
+  const [countryFilter, setCountryFilter] = useState<CountryCode>("MY");
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
 
@@ -133,15 +148,28 @@ export function EventDatasets({
     () => datasets.filter((dataset) => dataset.kind === "event"),
     [datasets],
   );
-  const totalMemberships = eventSets.reduce(
-    (total, dataset) => total + dataset.itemCount,
-    0,
+  const visibleEventSets = useMemo(
+    () =>
+      eventSets.filter(
+        (dataset) => dataset.countryCode === countryFilter,
+      ),
+    [countryFilter, eventSets],
   );
   const totalReuses = eventSets.reduce(
     (total, dataset) => total + dataset.reuseCount,
     0,
   );
   const atCapacity = datasets.length >= limit;
+  const visibleMemberships = visibleEventSets.reduce(
+    (total, dataset) => total + dataset.itemCount,
+    0,
+  );
+  const visibleReady = visibleEventSets.filter(
+    (dataset) => dataset.status === "ready",
+  ).length;
+  const visibleNeedsReview = visibleEventSets.filter(
+    (dataset) => dataset.localizationState === "needs_review",
+  ).length;
 
   async function runAction(dataset: Dataset, action: "duplicate" | "reuse") {
     setBusy(`${action}-${dataset.id}`);
@@ -165,6 +193,34 @@ export function EventDatasets({
         );
         setToast(`${dataset.name} prepared for the next game.`);
       }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Action failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createCountryVariant(
+    dataset: Dataset,
+    targetCountryCode: CountryCode,
+  ) {
+    setBusy(`country-${dataset.id}`);
+    try {
+      const response = await fetch(`/api/datasets/${dataset.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "countryVariant",
+          countryCode: targetCountryCode,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Action failed.");
+      setDatasets((current) => [payload.dataset, ...current]);
+      setCountryFilter(targetCountryCode);
+      setToast(
+        `${countryMeta[targetCountryCode].label} draft created. Review its economics and localized text before use.`,
+      );
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Action failed.");
     } finally {
@@ -255,12 +311,15 @@ export function EventDatasets({
         </nav>
 
         <div className="event-side-note">
-          <span>EVENT ROTATION</span>
-          <strong>60 second windows</strong>
-          <p>Side A and Side B rotate eligible events independently.</p>
+          <span>{countryFilter} EVENT ROTATION</span>
+          <strong>{countryMeta[countryFilter].label}</strong>
+          <p>
+            {countryMeta[countryFilter].currencyCode} economic profile ·{" "}
+            {countryMeta[countryFilter].display} display
+          </p>
           <div>
             <i className="status-dot" />
-            91 ACTIVE RECORDS
+            {visibleMemberships} MAPPED RECORDS
           </div>
         </div>
 
@@ -285,8 +344,8 @@ export function EventDatasets({
             <strong>NaviWealth</strong>
           </div>
           <div className="event-top-context">
-            <span>EVENT LIBRARY</span>
-            <strong>91 active records</strong>
+            <span>{countryFilter} EVENT LIBRARY</span>
+            <strong>{visibleMemberships} mapped records</strong>
           </div>
           <div className="topbar-status">
             <span className="status-dot" />
@@ -312,7 +371,13 @@ export function EventDatasets({
             <button
               className="admin-primary event-primary"
               type="button"
-              onClick={() => setModal({ mode: "create", dataset: null })}
+              onClick={() =>
+                setModal({
+                  mode: "create",
+                  dataset: null,
+                  countryCode: countryFilter,
+                })
+              }
               disabled={atCapacity}
             >
               <span aria-hidden="true">＋</span>
@@ -322,32 +387,32 @@ export function EventDatasets({
 
           <section className="metric-grid event-metrics">
             <Metric
-              label="Event datasets"
-              value={`${eventSets.length}`}
-              meta="reusable packages"
+              label={`${countryMeta[countryFilter].label} datasets`}
+              value={`${visibleEventSets.length}`}
+              meta={`${countryFilter} reusable packages`}
               tone="purple"
               symbol="◈"
             />
             <Metric
-              label="Active events"
-              value="91"
-              meta="unique four-digit codes"
+              label="Mapped events"
+              value={`${visibleMemberships}`}
+              meta={`${countryMeta[countryFilter].display} economic records`}
               tone="cyan"
               symbol="#"
             />
             <Metric
-              label="Actionable"
-              value="83"
-              meta="player decisions"
+              label="Ready packages"
+              value={`${visibleReady}`}
+              meta="available for game setup"
               tone="green"
               symbol="✓"
             />
             <Metric
-              label="Automatic market"
-              value="8"
-              meta={`${totalReuses} package reuses`}
+              label="Needs localization"
+              value={`${visibleNeedsReview}`}
+              meta={`${totalReuses} total package reuses`}
               tone="yellow"
-              symbol="↻"
+              symbol="!"
             />
           </section>
 
@@ -367,11 +432,32 @@ export function EventDatasets({
                 <p className="eyebrow event-eyebrow">REUSABLE PACKAGES</p>
                 <h2>Event set library</h2>
                 <span>
-                  Bundle event IDs once and deploy the same rotation in future
-                  games.
+                  Country variants share one family while keeping their
+                  economies and currencies independent.
                 </span>
               </div>
-              <span>{eventSets.length} packages</span>
+              <div className="event-country-switch" aria-label="Event country">
+                {(["MY", "CN"] as CountryCode[]).map((countryCode) => (
+                  <button
+                    className={
+                      countryFilter === countryCode ? "active" : undefined
+                    }
+                    type="button"
+                    key={countryCode}
+                    onClick={() => setCountryFilter(countryCode)}
+                  >
+                    <strong>{countryCode}</strong>
+                    <span>{countryMeta[countryCode].label}</span>
+                    <em>
+                      {
+                        eventSets.filter(
+                          (dataset) => dataset.countryCode === countryCode,
+                        ).length
+                      }
+                    </em>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="stock-set-grid">
@@ -379,129 +465,200 @@ export function EventDatasets({
                 ? Array.from({ length: 4 }, (_, index) => (
                     <div className="stock-set-card loading" key={index} />
                   ))
-                : eventSets.map((dataset) => (
-                    <EventSetCard
-                      key={dataset.id}
-                      dataset={dataset}
-                      busy={busy}
-                      onEdit={() => setModal({ mode: "edit", dataset })}
-                      onReuse={() => void runAction(dataset, "reuse")}
-                      onDuplicate={() => void runAction(dataset, "duplicate")}
-                      onDelete={() => void deleteDataset(dataset)}
-                    />
-                  ))}
+                : visibleEventSets.map((dataset) => {
+                    const targetCountryCode: CountryCode =
+                      dataset.countryCode === "MY" ? "CN" : "MY";
+                    const hasTargetVariant = eventSets.some(
+                      (candidate) =>
+                        candidate.datasetFamilyId === dataset.datasetFamilyId &&
+                        candidate.countryCode === targetCountryCode,
+                    );
+                    return (
+                      <EventSetCard
+                        key={dataset.id}
+                        dataset={dataset}
+                        busy={busy}
+                        targetCountryCode={
+                          hasTargetVariant ? null : targetCountryCode
+                        }
+                        onEdit={() => setModal({ mode: "edit", dataset })}
+                        onReuse={() => void runAction(dataset, "reuse")}
+                        onDuplicate={() =>
+                          void runAction(dataset, "duplicate")
+                        }
+                        onCreateVariant={(countryCode) =>
+                          void createCountryVariant(dataset, countryCode)
+                        }
+                        onDelete={() => void deleteDataset(dataset)}
+                      />
+                    );
+                  })}
             </div>
+            {!loading && visibleEventSets.length === 0 && (
+              <div className="event-country-empty">
+                <span>{countryFilter}</span>
+                <div>
+                  <strong>
+                    No {countryMeta[countryFilter].label} event datasets yet
+                  </strong>
+                  <p>
+                    Switch countries and create a country variant from an
+                    existing event set, or start a new dataset here.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setModal({
+                      mode: "create",
+                      dataset: null,
+                      countryCode: countryFilter,
+                    })
+                  }
+                >
+                  New {countryFilter} dataset
+                </button>
+              </div>
+            )}
           </section>
 
-          <section className="event-insight-grid">
-            <div className="event-type-panel">
-              <div className="stock-section-heading">
-                <div>
-                  <p className="eyebrow event-eyebrow">SOURCE INVENTORY</p>
-                  <h2>Event type distribution</h2>
-                  <span>All active reusable event records by top-level type.</span>
-                </div>
-                <span>91 events</span>
-              </div>
-              <div className="event-type-grid">
-                {eventCategories.map((category) => (
-                  <article key={category.key} className={category.tone}>
-                    <span>{category.code}</span>
+          {visibleEventSets.length > 0 && (
+            <>
+              <section className="event-insight-grid">
+                <div className="event-type-panel">
+                  <div className="stock-section-heading">
                     <div>
-                      <strong>{category.label}</strong>
-                      <p>{category.copy}</p>
+                      <p className="eyebrow event-eyebrow">SOURCE INVENTORY</p>
+                      <h2>Event type distribution</h2>
+                      <span>
+                        Active {countryMeta[countryFilter].label} event records
+                        by top-level type.
+                      </span>
                     </div>
-                    <em>{category.count}</em>
-                    <div className="event-type-track">
-                      <i style={{ width: `${(category.count / 91) * 100}%` }} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <aside className="event-side-panel">
-              <div className="stock-section-heading">
-                <div>
-                  <p className="eyebrow event-eyebrow">SCREEN COVERAGE</p>
-                  <h2>Side distribution</h2>
+                    <span>91 events</span>
+                  </div>
+                  <div className="event-type-grid">
+                    {eventCategories.map((category) => (
+                      <article key={category.key} className={category.tone}>
+                        <span>{category.code}</span>
+                        <div>
+                          <strong>{category.label}</strong>
+                          <p>{category.copy}</p>
+                        </div>
+                        <em>{category.count}</em>
+                        <div className="event-type-track">
+                          <i
+                            style={{
+                              width: `${(category.count / 91) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="side-bars">
-                <SideBar label="Side A" count={31} total={91} tone="purple" />
-                <SideBar label="Side B" count={33} total={91} tone="cyan" />
-                <SideBar label="All sides" count={27} total={91} tone="green" />
-              </div>
-              <div className="event-rule-note">
-                <span>i</span>
-                <p>
-                  ALL-side market events dispatch once, preventing duplicate
-                  global effects.
-                </p>
-              </div>
-            </aside>
-          </section>
 
-          <section className="event-sample-panel">
-            <div className="stock-section-heading">
-              <div>
-                <p className="eyebrow event-eyebrow">REFERENCE RECORDS</p>
-                <h2>Event inventory sample</h2>
-                <span>
-                  Representative property, expense, and automatic market
-                  records.
-                </span>
-              </div>
-              <span>{totalMemberships} memberships</span>
-            </div>
-            <div className="event-sample-table-wrap">
-              <table className="event-sample-table">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Event</th>
-                    <th>Type</th>
-                    <th>Side</th>
-                    <th>Behavior</th>
-                    <th>Mode</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sampleEvents.map((event) => (
-                    <tr key={event.code}>
-                      <td>
-                        <code>{event.code}</code>
-                      </td>
-                      <td>
-                        <strong>{event.title}</strong>
-                      </td>
-                      <td>
-                        <span className={`event-type-label ${event.type}`}>
-                          {event.type.replace("_", " ")}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="event-side-label">{event.side}</span>
-                      </td>
-                      <td>{event.behavior}</td>
-                      <td>
-                        <span
-                          className={
-                            event.status === "Automatic"
-                              ? "event-mode automatic"
-                              : "event-mode actionable"
-                          }
-                        >
-                          <i />
-                          {event.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                <aside className="event-side-panel">
+                  <div className="stock-section-heading">
+                    <div>
+                      <p className="eyebrow event-eyebrow">SCREEN COVERAGE</p>
+                      <h2>Side distribution</h2>
+                    </div>
+                  </div>
+                  <div className="side-bars">
+                    <SideBar
+                      label="Side A"
+                      count={31}
+                      total={91}
+                      tone="purple"
+                    />
+                    <SideBar
+                      label="Side B"
+                      count={33}
+                      total={91}
+                      tone="cyan"
+                    />
+                    <SideBar
+                      label="All sides"
+                      count={27}
+                      total={91}
+                      tone="green"
+                    />
+                  </div>
+                  <div className="event-rule-note">
+                    <span>i</span>
+                    <p>
+                      ALL-side market events dispatch once, preventing
+                      duplicate global effects.
+                    </p>
+                  </div>
+                </aside>
+              </section>
+
+              <section className="event-sample-panel">
+                <div className="stock-section-heading">
+                  <div>
+                    <p className="eyebrow event-eyebrow">REFERENCE RECORDS</p>
+                    <h2>Event inventory sample</h2>
+                    <span>
+                      Representative property, expense, and automatic market
+                      records.
+                    </span>
+                  </div>
+                  <span>{visibleMemberships} memberships</span>
+                </div>
+                <div className="event-sample-table-wrap">
+                  <table className="event-sample-table">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Event</th>
+                        <th>Type</th>
+                        <th>Side</th>
+                        <th>Behavior</th>
+                        <th>Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sampleEvents.map((event) => (
+                        <tr key={event.code}>
+                          <td>
+                            <code>{event.code}</code>
+                          </td>
+                          <td>
+                            <strong>{event.title}</strong>
+                          </td>
+                          <td>
+                            <span className={`event-type-label ${event.type}`}>
+                              {event.type.replace("_", " ")}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="event-side-label">
+                              {event.side}
+                            </span>
+                          </td>
+                          <td>{event.behavior}</td>
+                          <td>
+                            <span
+                              className={
+                                event.status === "Automatic"
+                                  ? "event-mode automatic"
+                                  : "event-mode actionable"
+                              }
+                            >
+                              <i />
+                              {event.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
         </div>
       </main>
 
@@ -556,6 +713,8 @@ function EventSetCard({
   onEdit,
   onReuse,
   onDuplicate,
+  onCreateVariant,
+  targetCountryCode,
   onDelete,
 }: {
   dataset: Dataset;
@@ -563,6 +722,8 @@ function EventSetCard({
   onEdit: () => void;
   onReuse: () => void;
   onDuplicate: () => void;
+  onCreateVariant: (countryCode: CountryCode) => void;
+  targetCountryCode: CountryCode | null;
   onDelete: () => void;
 }) {
   return (
@@ -576,6 +737,10 @@ function EventSetCard({
       </a>
       <div className="stock-set-card-top">
         <span className="dataset-kind-icon event">EV</span>
+        <span className={`dataset-country-badge ${dataset.countryCode}`}>
+          {dataset.countryCode}
+          <i>{countryMeta[dataset.countryCode].display}</i>
+        </span>
         <span className={`status-label ${dataset.status}`}>
           <i />
           {dataset.status}
@@ -586,6 +751,17 @@ function EventSetCard({
             <button type="button" onClick={onDuplicate}>
               Duplicate & reuse
             </button>
+            {targetCountryCode && (
+              <button
+                type="button"
+                onClick={() => onCreateVariant(targetCountryCode)}
+                disabled={busy === `country-${dataset.id}`}
+              >
+                {busy === `country-${dataset.id}`
+                  ? "Creating variant…"
+                  : `Create ${targetCountryCode} variant`}
+              </button>
+            )}
             <button className="danger" type="button" onClick={onDelete}>
               Delete dataset
             </button>
@@ -594,6 +770,15 @@ function EventSetCard({
       </div>
       <h3>{dataset.name}</h3>
       <p>{dataset.description}</p>
+      <div className="dataset-country-line">
+        <strong>{countryMeta[dataset.countryCode].label}</strong>
+        <span>
+          {dataset.currencyCode} · {countryMeta[dataset.countryCode].display}
+        </span>
+        {dataset.localizationState === "needs_review" && (
+          <em>Needs localization</em>
+        )}
+      </div>
       <div className="event-member-preview">
         <span>
           <strong>{dataset.itemCount}</strong>
@@ -627,9 +812,21 @@ function EventSetCard({
         <button
           type="button"
           onClick={onReuse}
-          disabled={busy === `reuse-${dataset.id}`}
+          disabled={
+            busy === `reuse-${dataset.id}` ||
+            dataset.localizationState === "needs_review"
+          }
+          title={
+            dataset.localizationState === "needs_review"
+              ? "Complete the country localization review before use."
+              : undefined
+          }
         >
-          {busy === `reuse-${dataset.id}` ? "Preparing…" : "Use in game →"}
+          {dataset.localizationState === "needs_review"
+            ? "Localize before use"
+            : busy === `reuse-${dataset.id}`
+              ? "Preparing…"
+              : "Use in game →"}
         </button>
       </div>
     </article>
@@ -654,6 +851,13 @@ function EventSetModal({
   const [members, setMembers] = useState(
     source?.memberIds.join(", ") ?? "",
   );
+  const [countryCode, setCountryCode] = useState<CountryCode>(
+    source?.countryCode ??
+      (modal.mode === "create" ? modal.countryCode : "MY"),
+  );
+  const [localizationState, setLocalizationState] = useState<
+    Dataset["localizationState"]
+  >(source?.localizationState ?? "localized");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -697,6 +901,8 @@ function EventSetModal({
             description,
             status,
             memberIds,
+            countryCode,
+            localizationState,
           }),
         },
       );
@@ -764,6 +970,50 @@ function EventSetModal({
               />
             </label>
             <label className="admin-field wide">
+              <span>
+                Country and currency
+                {modal.mode === "edit" && <em>locked to this variant</em>}
+              </span>
+              <select
+                value={countryCode}
+                disabled={modal.mode === "edit"}
+                onChange={(event) =>
+                  setCountryCode(event.target.value as CountryCode)
+                }
+              >
+                <option value="MY">Malaysia · MYR · RM</option>
+                <option value="CN">China · CNY · RMB</option>
+              </select>
+              <small>
+                Country controls the economic variant. Language remains a
+                separate display choice.
+              </small>
+            </label>
+            {source?.localizationState === "needs_review" && (
+              <label className="admin-field wide">
+                <span>Country localization review</span>
+                <select
+                  value={localizationState}
+                  onChange={(event) =>
+                    setLocalizationState(
+                      event.target.value as Dataset["localizationState"],
+                    )
+                  }
+                >
+                  <option value="needs_review">
+                    Needs economic and text review
+                  </option>
+                  <option value="localized">
+                    Country localization complete
+                  </option>
+                </select>
+                <small>
+                  Mark complete only after amounts, rules, probability, and
+                  embedded currency text have been reviewed.
+                </small>
+              </label>
+            )}
+            <label className="admin-field wide">
               <span>Status</span>
               <select
                 value={status}
@@ -772,7 +1022,12 @@ function EventSetModal({
                 }
               >
                 <option value="draft">Draft</option>
-                <option value="ready">Ready</option>
+                <option
+                  value="ready"
+                  disabled={localizationState === "needs_review"}
+                >
+                  Ready
+                </option>
                 <option value="archived">Archived</option>
               </select>
             </label>

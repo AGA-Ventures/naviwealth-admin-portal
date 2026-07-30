@@ -5,6 +5,9 @@ export const DATASET_LIMIT = 30;
 export type DatasetKind = "event" | "stock";
 export type DatasetStatus = "draft" | "ready" | "archived";
 export type ValidationState = "valid" | "warning";
+export type CountryCode = "MY" | "CN";
+export type CurrencyCode = "MYR" | "CNY";
+export type LocalizationState = "localized" | "needs_review";
 
 export type Dataset = {
   id: number;
@@ -16,6 +19,10 @@ export type Dataset = {
   itemCount: number;
   reuseCount: number;
   validationState: ValidationState;
+  countryCode: CountryCode;
+  currencyCode: CurrencyCode;
+  datasetFamilyId: string;
+  localizationState: LocalizationState;
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -27,6 +34,8 @@ type DatasetInput = {
   description?: string;
   status?: DatasetStatus;
   memberIds?: number[];
+  countryCode?: CountryCode;
+  localizationState?: LocalizationState;
 };
 
 type GatewayResponse = {
@@ -84,6 +93,18 @@ export async function duplicateDataset(id: number) {
 
 export async function reuseDataset(id: number) {
   const response = await callGateway({ operation: "reuse", id });
+  return requiredDataset(response);
+}
+
+export async function createCountryVariant(
+  id: number,
+  countryCode: CountryCode,
+) {
+  const response = await callGateway({
+    operation: "createCountryVariant",
+    id,
+    input: { countryCode },
+  });
   return requiredDataset(response);
 }
 

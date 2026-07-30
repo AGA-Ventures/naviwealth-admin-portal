@@ -10,12 +10,17 @@ const GATEWAY_KEY_HASH =
 
 type DatasetKind = "event" | "stock";
 type DatasetStatus = "draft" | "ready" | "archived";
+type CountryCode = "MY" | "CN";
+type CurrencyCode = "MYR" | "CNY";
+type LocalizationState = "localized" | "needs_review";
 type DatasetInput = {
   name?: unknown;
   kind?: unknown;
   description?: unknown;
   status?: unknown;
   memberIds?: unknown;
+  countryCode?: unknown;
+  localizationState?: unknown;
 };
 
 type AdminUserRole = "owner" | "admin" | "facilitator" | "viewer";
@@ -55,6 +60,10 @@ type DatasetRow = {
   item_count: number;
   reuse_count: number;
   validation_state: "valid" | "warning";
+  country_code: CountryCode;
+  currency_code: CurrencyCode;
+  dataset_family_id: string;
+  localization_state: LocalizationState;
   last_used_at: string | null;
   created_at: string;
   updated_at: string;
@@ -189,6 +198,21 @@ Deno.serve(async (request) => {
         return json({
           dataset: mapDataset(await reuseDataset(client, id(body.id))),
         });
+      case "createCountryVariant":
+        return json(
+          {
+            dataset: mapDataset(
+              await createCountryVariant(
+                client,
+                id(body.id),
+                parseCountryCode(
+                  ((body.input ?? {}) as DatasetInput).countryCode,
+                ),
+              ),
+            ),
+          },
+          201,
+        );
       case "listAdminUsers":
         return json({ users: await listAdminUsers(client) });
       case "createAdminUser":
@@ -301,6 +325,7 @@ async function findDataset(client: SupabaseClient, datasetId: number) {
 async function createDataset(client: SupabaseClient, input: DatasetInput) {
   await assertCapacity(client);
   const members = sanitizeMemberIds(input.memberIds ?? []);
+  const countryCode = parseCountryCode(input.countryCode ?? "MY");
   const { data, error } = await client
     .from("datasets")
     .insert({
@@ -310,6 +335,8 @@ async function createDataset(client: SupabaseClient, input: DatasetInput) {
       status: parseStatus(input.status ?? "draft"),
       member_ids: members,
       validation_state: members.length > 0 ? "valid" : "warning",
+      country_code: countryCode,
+      currency_code: currencyForCountry(countryCode),
     })
     .select("*")
     .single();
@@ -327,6 +354,18 @@ async function updateDataset(
     input.memberIds === undefined
       ? current.member_ids
       : sanitizeMemberIds(input.memberIds);
+  const localizationState =
+    input.localizationState === undefined
+      ? current.localization_state
+      : parseLocalizationState(input.localizationState);
+  const status =
+    input.status === undefined ? current.status : parseStatus(input.status);
+  if (localizationState === "needs_review" && status === "ready") {
+    throw new GatewayError(
+      "Complete country localization before marking this dataset ready.",
+      409,
+    );
+  }
 
   const { data, error } = await client
     .from("datasets")
@@ -337,12 +376,13 @@ async function updateDataset(
         input.description === undefined
           ? current.description
           : cleanDescription(input.description),
-      status:
-        input.status === undefined
-          ? current.status
-          : parseStatus(input.status),
+      status,
       member_ids: members,
-      validation_state: members.length > 0 ? "valid" : "warning",
+      localization_state: localizationState,
+      validation_state:
+        members.length > 0 && localizationState === "localized"
+          ? "valid"
+          : "warning",
     })
     .eq("id", datasetId)
     .select("*")
@@ -363,7 +403,11 @@ async function duplicateDataset(
 ) {
   await assertCapacity(client);
   const source = await findDataset(client, datasetId);
-  const { data: rows, error } = await client.from("datasets").select("name");
+  const { data: rows, error } = await client
+    .from("datasets")
+    .select("name")
+    .eq("kind", source.kind)
+    .eq("country_code", source.country_code);
   if (error) throw databaseError(error);
 
   const name = availableCopyName(
@@ -380,6 +424,9 @@ async function duplicateDataset(
       status: "draft",
       member_ids: source.member_ids,
       validation_state: source.member_ids.length > 0 ? "valid" : "warning",
+      country_code: source.country_code,
+      currency_code: source.currency_code,
+      localization_state: source.localization_state,
     })
     .select("*")
     .single();
@@ -387,8 +434,36 @@ async function duplicateDataset(
   return data as DatasetRow;
 }
 
+async function createCountryVariant(
+  client: SupabaseClient,
+  datasetId: number,
+  countryCode: CountryCode,
+) {
+  await assertCapacity(client);
+  const source = await findDataset(client, datasetId);
+  if (source.kind !== "event") {
+    throw new GatewayError(
+      "Country variants are currently available only for event datasets.",
+      400,
+    );
+  }
+
+  const { data, error } = await client.rpc("create_event_country_variant", {
+    source_dataset_id: datasetId,
+    target_country_code: countryCode,
+  });
+  if (error) throw databaseError(error);
+  return findDataset(client, Number(data));
+}
+
 async function reuseDataset(client: SupabaseClient, datasetId: number) {
   const current = await findDataset(client, datasetId);
+  if (current.localization_state === "needs_review") {
+    throw new GatewayError(
+      "Complete the country localization review before using this dataset.",
+      409,
+    );
+  }
   if (current.item_count === 0) {
     throw new GatewayError(
       "Add at least one member before reusing this dataset in a game.",
@@ -684,6 +759,10 @@ function mapDataset(row: DatasetRow) {
     itemCount: row.item_count,
     reuseCount: row.reuse_count,
     validationState: row.validation_state,
+    countryCode: row.country_code,
+    currencyCode: row.currency_code,
+    datasetFamilyId: row.dataset_family_id,
+    localizationState: row.localization_state,
     lastUsedAt: row.last_used_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -965,6 +1044,20 @@ function parseKind(value: unknown): DatasetKind {
   throw new GatewayError("Dataset type must be event or stock.", 400);
 }
 
+function parseCountryCode(value: unknown): CountryCode {
+  if (value === "MY" || value === "CN") return value;
+  throw new GatewayError("Country code must be MY or CN.", 400);
+}
+
+function currencyForCountry(countryCode: CountryCode): CurrencyCode {
+  return countryCode === "MY" ? "MYR" : "CNY";
+}
+
+function parseLocalizationState(value: unknown): LocalizationState {
+  if (value === "localized" || value === "needs_review") return value;
+  throw new GatewayError("Select a valid localization state.", 400);
+}
+
 function parseStatus(value: unknown): DatasetStatus {
   if (value === "draft" || value === "ready" || value === "archived") {
     return value;
@@ -1006,6 +1099,18 @@ function availableCopyName(sourceName: string, usedNames: Set<string>) {
 }
 
 function databaseError(error: { code?: string; message?: string }) {
+  if (error.message?.includes("already has a variant")) {
+    return new GatewayError(
+      "This dataset family already has a variant for that country.",
+      409,
+    );
+  }
+  if (error.message?.includes("Choose a different country")) {
+    return new GatewayError("Choose a different country.", 400);
+  }
+  if (error.code === "P0002") {
+    return new GatewayError("Dataset not found.", 404);
+  }
   if (error.code === "23505") {
     return new GatewayError("This value is already in use.", 409);
   }

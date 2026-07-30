@@ -131,3 +131,41 @@ test("shows real imported rows and edits every source field", async () => {
   assert.match(gateway, /sanitizeEventRecordData/);
   assert.match(gateway, /Event fields must match the imported source record/);
 });
+
+test("supports isolated Malaysia and China event dataset variants", async () => {
+  const [library, detail, store, gateway, migration] = await Promise.all([
+    source("app/admin/events/EventDatasets.tsx"),
+    source("app/admin/events/[id]/EventDatasetDetail.tsx"),
+    source("db/datasets.ts"),
+    source("supabase/functions/naviwealth-datasets/index.ts"),
+    source(
+      "supabase/migrations/20260730060144_add_event_country_variants.sql",
+    ),
+  ]);
+
+  assert.match(library, /Malaysia · MYR · RM/);
+  assert.match(library, /China · CNY · RMB/);
+  assert.match(library, /createCountryVariant/);
+  assert.match(library, /Needs localization/);
+  assert.match(detail, /aria-label="Country variants"/);
+  assert.match(detail, /Review economic amounts, rules, probabilities/);
+  assert.match(detail, /formatEconomicValue/);
+  assert.match(store, /operation: "createCountryVariant"/);
+  assert.match(gateway, /create_event_country_variant/);
+  assert.match(gateway, /Complete country localization before marking/);
+
+  assert.match(migration, /add column country_code text not null default 'MY'/);
+  assert.match(migration, /dataset_family_id uuid not null default gen_random_uuid/);
+  assert.match(migration, /datasets_family_country_unique/);
+  assert.match(
+    migration,
+    /create or replace function public\.create_event_country_variant/,
+  );
+  assert.match(migration, /security invoker/);
+  assert.match(migration, /'draft'/);
+  assert.match(migration, /'needs_review'/);
+  assert.match(
+    migration,
+    /revoke all on function public\.create_event_country_variant\(integer, text\)/,
+  );
+});

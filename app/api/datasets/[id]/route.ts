@@ -1,5 +1,6 @@
 import {
   DatasetStoreError,
+  createCountryVariant,
   deleteDataset,
   duplicateDataset,
   getDataset,
@@ -48,7 +49,17 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const id = await datasetId(context);
-    const payload = (await request.json()) as { action?: string };
+    const payload = (await request.json()) as {
+      action?: string;
+      countryCode?: "MY" | "CN";
+    };
+    if (payload.action === "countryVariant") {
+      if (payload.countryCode !== "MY" && payload.countryCode !== "CN") {
+        throw new DatasetStoreError("Select a supported country.", 400);
+      }
+      const dataset = await createCountryVariant(id, payload.countryCode);
+      return Response.json({ dataset }, { status: 201 });
+    }
     if (payload.action === "duplicate") {
       const dataset = await duplicateDataset(id);
       return Response.json({ dataset }, { status: 201 });

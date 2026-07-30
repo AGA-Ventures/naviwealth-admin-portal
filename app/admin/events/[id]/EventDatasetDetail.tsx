@@ -19,9 +19,23 @@ type Dataset = {
   itemCount: number;
   reuseCount: number;
   validationState: "valid" | "warning";
+  countryCode: CountryCode;
+  currencyCode: "MYR" | "CNY";
+  datasetFamilyId: string;
+  localizationState: "localized" | "needs_review";
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type CountryCode = "MY" | "CN";
+
+const countryMeta: Record<
+  CountryCode,
+  { label: string; currencyCode: "MYR" | "CNY"; display: string }
+> = {
+  MY: { label: "Malaysia", currencyCode: "MYR", display: "RM" },
+  CN: { label: "China", currencyCode: "CNY", display: "RMB" },
 };
 
 type DetailProps = {
@@ -524,6 +538,22 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   const stockCount = datasets.filter(
     (item) => item.kind === "stock",
   ).length;
+  const familyVariants = dataset
+    ? datasets.filter(
+        (item) =>
+          item.kind === "event" &&
+          item.datasetFamilyId === dataset.datasetFamilyId,
+      )
+    : [];
+  const missingCountryCode: CountryCode | null = dataset
+    ? familyVariants.some(
+        (variant) => variant.countryCode !== dataset.countryCode,
+      )
+      ? null
+      : dataset.countryCode === "MY"
+        ? "CN"
+        : "MY"
+    : null;
 
   async function runAction(action: "reuse" | "duplicate") {
     if (!dataset) return;
@@ -551,6 +581,29 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
         actionError instanceof Error ? actionError.message : "Action failed.",
       );
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createCountryVariant(countryCode: CountryCode) {
+    if (!dataset) return;
+    setBusy("country");
+    try {
+      const response = await fetch(`/api/datasets/${dataset.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "countryVariant",
+          countryCode,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Action failed.");
+      window.location.href = `/admin/events/${payload.dataset.id}`;
+    } catch (actionError) {
+      setToast(
+        actionError instanceof Error ? actionError.message : "Action failed.",
+      );
       setBusy(null);
     }
   }
@@ -639,6 +692,11 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
             <span>OPEN PACKAGE</span>
             <strong>{dataset.name}</strong>
             <p>{dataset.itemCount} mapped event records</p>
+            <p>
+              {countryMeta[dataset.countryCode].label} ·{" "}
+              {dataset.currencyCode} ·{" "}
+              {countryMeta[dataset.countryCode].display}
+            </p>
             <div>
               <i className="status-dot" />
               {dataset.status.toUpperCase()}
@@ -695,6 +753,45 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                   <span>/</span>
                   <strong>{dataset.name}</strong>
                 </div>
+                <div
+                  className="event-family-switch"
+                  aria-label="Country variants"
+                >
+                  {(["MY", "CN"] as CountryCode[]).map((countryCode) => {
+                    const variant = familyVariants.find(
+                      (candidate) => candidate.countryCode === countryCode,
+                    );
+                    if (variant) {
+                      return (
+                        <a
+                          className={
+                            dataset.countryCode === countryCode
+                              ? "active"
+                              : undefined
+                          }
+                          href={`/admin/events/${variant.id}`}
+                          key={countryCode}
+                        >
+                          <strong>{countryCode}</strong>
+                          <span>{countryMeta[countryCode].label}</span>
+                          <em>{countryMeta[countryCode].display}</em>
+                        </a>
+                      );
+                    }
+                    return (
+                      <button
+                        type="button"
+                        key={countryCode}
+                        disabled={busy === "country"}
+                        onClick={() => void createCountryVariant(countryCode)}
+                      >
+                        <strong>{countryCode}</strong>
+                        <span>Add {countryMeta[countryCode].label}</span>
+                        <em>＋</em>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="event-detail-title-row">
                   <span className="dataset-kind-icon event">EV</span>
                   <div>
@@ -706,6 +803,17 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                         <i />
                         {dataset.status}
                       </span>
+                      <span
+                        className={`dataset-country-badge ${dataset.countryCode}`}
+                      >
+                        {dataset.countryCode}
+                        <i>{countryMeta[dataset.countryCode].display}</i>
+                      </span>
+                      {dataset.localizationState === "needs_review" && (
+                        <span className="localization-review-label">
+                          Needs localization
+                        </span>
+                      )}
                     </div>
                     <h1>{dataset.name}</h1>
                     <p>{dataset.description}</p>
@@ -721,17 +829,62 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                     >
                       {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
                     </button>
+                    {missingCountryCode && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void createCountryVariant(missingCountryCode)
+                        }
+                        disabled={busy === "country"}
+                      >
+                        {busy === "country"
+                          ? "Creating…"
+                          : `Create ${missingCountryCode} variant`}
+                      </button>
+                    )}
                     <button
                       className="event-primary"
                       type="button"
                       onClick={() => void runAction("reuse")}
-                      disabled={busy === "reuse"}
+                      disabled={
+                        busy === "reuse" ||
+                        dataset.localizationState === "needs_review"
+                      }
+                      title={
+                        dataset.localizationState === "needs_review"
+                          ? "Complete country localization before use."
+                          : undefined
+                      }
                     >
-                      {busy === "reuse" ? "Preparing…" : "Use in game →"}
+                      {dataset.localizationState === "needs_review"
+                        ? "Localize before use"
+                        : busy === "reuse"
+                          ? "Preparing…"
+                          : "Use in game →"}
                     </button>
                   </div>
                 </div>
               </section>
+
+              {dataset.localizationState === "needs_review" && (
+                <section className="country-localization-notice">
+                  <span>{dataset.countryCode}</span>
+                  <div>
+                    <strong>
+                      {countryMeta[dataset.countryCode].label} localization
+                      required
+                    </strong>
+                    <p>
+                      This country variant copied the source structure only.
+                      Review economic amounts, rules, probabilities, and any
+                      embedded currency text before marking it ready.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setEditing(true)}>
+                    Review settings
+                  </button>
+                </section>
+              )}
 
               <section className="detail-metric-grid">
                 <DetailMetric
@@ -874,7 +1027,10 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                                 </td>
                                 <td>
                                   <strong>
-                                    {eventFinancialEffect(record.data)}
+                                    {eventFinancialEffect(
+                                      record.data,
+                                      dataset.currencyCode,
+                                    )}
                                   </strong>
                                   <small className="event-row-open">
                                     Edit all fields
@@ -1051,6 +1207,8 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
         <ImportedEventRecordModal
           record={selectedStoredEvent}
           datasetName={dataset.name}
+          countryCode={dataset.countryCode}
+          currencyCode={dataset.currencyCode}
           onClose={closeStoredEventRecord}
           onSaved={(updated) => {
             setEventRecords((current) =>
@@ -1077,11 +1235,15 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
 function ImportedEventRecordModal({
   record,
   datasetName,
+  countryCode,
+  currencyCode,
   onClose,
   onSaved,
 }: {
   record: StoredEventRecord;
   datasetName: string;
+  countryCode: CountryCode;
+  currencyCode: "MYR" | "CNY";
   onClose: () => void;
   onSaved: (record: StoredEventRecord) => void;
 }) {
@@ -1236,7 +1398,7 @@ function ImportedEventRecordModal({
             </div>
             <div>
               <span>FINANCIAL EFFECT</span>
-              <strong>{eventFinancialEffect(draft)}</strong>
+              <strong>{eventFinancialEffect(draft, currencyCode)}</strong>
             </div>
           </section>
 
@@ -1244,6 +1406,11 @@ function ImportedEventRecordModal({
             <div className="imported-event-source">
               <span>EVENT SET</span>
               <strong>{datasetName}</strong>
+              <span>COUNTRY</span>
+              <strong>
+                {countryMeta[countryCode].label} · {currencyCode} ·{" "}
+                {countryMeta[countryCode].display}
+              </strong>
               <span>SOURCE FILE</span>
               <strong>{sourceFileName(record.sourceFile)}</strong>
               <span>FIELDS</span>
@@ -1549,7 +1716,10 @@ function eventScreenLabel(screen: string | undefined) {
   return screen?.trim() || "Not set";
 }
 
-function eventFinancialEffect(data: EventRecordData) {
+function eventFinancialEffect(
+  data: EventRecordData,
+  currencyCode: "MYR" | "CNY",
+) {
   const candidates = [
     ["Cash flow", data["Cash Flow"]],
     ["Expense", data.Expense],
@@ -1562,7 +1732,29 @@ function eventFinancialEffect(data: EventRecordData) {
     return normalized !== "" && normalized !== "0" && normalized !== "0.00";
   });
   if (!effect) return "No direct value";
-  return `${effect[0]} ${effect[1]}`;
+  if (effect[0] === "Change") {
+    const value = String(effect[1]).trim();
+    return `Change ${value.endsWith("%") ? value : `${value}%`}`;
+  }
+  return `${effect[0]} ${formatEconomicValue(
+    String(effect[1]),
+    currencyCode,
+  )}`;
+}
+
+function formatEconomicValue(
+  rawValue: string,
+  currencyCode: "MYR" | "CNY",
+) {
+  const value = rawValue.trim();
+  if (/^(RM|RMB|CN¥|¥)/i.test(value)) return value;
+  const numericValue = Number(value.replaceAll(",", ""));
+  const formattedValue = Number.isFinite(numericValue)
+    ? new Intl.NumberFormat("en-MY", {
+        maximumFractionDigits: 2,
+      }).format(numericValue)
+    : value;
+  return `${currencyCode === "MYR" ? "RM" : "RMB"} ${formattedValue}`;
 }
 
 function sourceFileName(path: string) {
@@ -1710,6 +1902,9 @@ function DetailEditModal({
   const [description, setDescription] = useState(dataset.description);
   const [status, setStatus] = useState(dataset.status);
   const [members, setMembers] = useState(dataset.memberIds.join(", "));
+  const [localizationState, setLocalizationState] = useState(
+    dataset.localizationState,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1749,6 +1944,7 @@ function DetailEditModal({
           description,
           status,
           memberIds,
+          localizationState,
         }),
       });
       const payload = await response.json();
@@ -1804,6 +2000,45 @@ function DetailEditModal({
               />
             </label>
             <label className="admin-field wide">
+              <span>Country and currency</span>
+              <input
+                readOnly
+                value={`${countryMeta[dataset.countryCode].label} · ${
+                  dataset.countryCode
+                } · ${dataset.currencyCode} · ${
+                  countryMeta[dataset.countryCode].display
+                }`}
+              />
+              <small>
+                Create a country variant to change economies. This identity is
+                locked for the current variant.
+              </small>
+            </label>
+            {dataset.localizationState === "needs_review" && (
+              <label className="admin-field wide">
+                <span>Country localization review</span>
+                <select
+                  value={localizationState}
+                  onChange={(event) =>
+                    setLocalizationState(
+                      event.target.value as Dataset["localizationState"],
+                    )
+                  }
+                >
+                  <option value="needs_review">
+                    Needs economic and text review
+                  </option>
+                  <option value="localized">
+                    Country localization complete
+                  </option>
+                </select>
+                <small>
+                  Confirm only after amounts, event logic, probability, and
+                  embedded currency text have been localized.
+                </small>
+              </label>
+            )}
+            <label className="admin-field wide">
               <span>Status</span>
               <select
                 value={status}
@@ -1812,7 +2047,12 @@ function DetailEditModal({
                 }
               >
                 <option value="draft">Draft</option>
-                <option value="ready">Ready</option>
+                <option
+                  value="ready"
+                  disabled={localizationState === "needs_review"}
+                >
+                  Ready
+                </option>
                 <option value="archived">Archived</option>
               </select>
             </label>
