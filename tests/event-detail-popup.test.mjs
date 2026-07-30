@@ -75,8 +75,16 @@ test("shows real imported rows and edits every source field", async () => {
   ]);
 
   assert.match(detail, /className="membership-row-action imported-event-row"/);
-  assert.match(detail, /Every imported CSV row is available to review and edit/);
+  assert.match(detail, /Open any row as a game-screen sample/);
+  assert.match(detail, /Preview · edit available/);
   assert.match(detail, /<ImportedEventRecordModal/);
+  assert.match(detail, /useState<"preview" \| "edit">\("preview"\)/);
+  assert.match(detail, /SAMPLE GAME SCREEN/);
+  assert.match(detail, /Edit event/);
+  assert.match(detail, /Back to preview/);
+  assert.match(detail, /<EventOutputMetric/);
+  assert.match(detail, /eventMoney\(data\["Active Income"\], currencyCode\)/);
+  assert.match(detail, /eventMoney\(data\["Liability \(Loan\)"\], currencyCode\)/);
   assert.match(detail, /Save event/);
   assert.match(detail, /editable values/);
 

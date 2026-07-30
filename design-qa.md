@@ -63,3 +63,68 @@
 - No blocking or recommended P3 polish remains for this scope.
 
 final result: passed
+
+---
+
+# Event output preview design QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/d8/t1mw66t10m5b3j173p40kqzc0000gn/T/TemporaryItems/NSIRD_screencaptureui_4oKfYU/Screenshot 2026-07-30 at 2.38.36 PM.png`
+- Source pixels: `3314 × 1866`
+- Browser-rendered implementation: `/Users/chishiongtan/Documents/naviwealth-admin-portal/outputs/event-output-design-qa/event-output-final.jpg`
+- Implementation screenshot pixels: `1087 × 964`
+- Compared implementation region: `.event-output-stage`, `1041 × 586` CSS pixels
+- Browser viewport: `1087 × 964` CSS pixels
+- Device scale factor: `1`
+- Normalized comparison: both source and implementation stage were scaled to `1200 × 675`; no browser chrome was included.
+- Side-by-side evidence: `/Users/chishiongtan/Documents/naviwealth-admin-portal/outputs/event-output-design-qa/event-output-comparison-final.jpg`
+- State: China event-set row 06, “Real Estate Investment - 1-Bedroom SOHO Apartment,” read-only sample screen.
+
+## Full-view comparison
+
+The implementation preserves the source composition: a 43/57 split, uppercase event story and access code on the left, bilingual event identity and timer on the right, a three-column financial snapshot, and a lower portfolio-impact group. The implementation uses the row’s actual data, so the China variant correctly displays `RMB`, access code `0277`, and `PROPERTY EVENT`; these differ intentionally from the static Malaysia reference.
+
+The admin-only action bar is outside the compared 16:9 game stage. It provides the required Close and Edit event controls without changing the player-facing sample screen.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Existing NaviWealth sans and mono families reproduce the bold display title, compact bilingual labels, numeric timer, financial values, and access code. Title wrapping matches the reference’s two-line real-estate example.
+- Spacing and layout rhythm: The final game stage is exactly 16:9 at `1041 × 586`. Major section starts, split ratio, card grid, bottom impact grouping, radii, and padding match the reference proportions.
+- Colors and visual tokens: Deep navy surfaces, cyan information accents, purple impact accents, green assets, and red liabilities match the source. Contrast remains strong.
+- Image quality and asset fidelity: The subtle left-side grid uses a clean texture extracted from the supplied source visual at `/public/event-output-grid-texture.png`; it is not recreated as CSS art. There are no missing product images or icons.
+- Copy and content: Every visible value is derived from the selected event row. The English description remains unchanged, including embedded `RM` text that still requires China localization; monetary output cards correctly use the selected dataset’s `RMB` display.
+
+## Focused-region comparison
+
+A separate crop was not required: the normalized `2400 × 675` side-by-side comparison keeps the title, description, timer, all nine metric values, impact labels, and access code legible at once. The financial snapshot and impact groups were also checked interactively in the browser.
+
+## Interaction and responsive checks
+
+- Clicking an imported event row opens the sample game screen first.
+- Edit event reveals all 40 imported fields.
+- Back to preview hides the form and restores the sample.
+- The 520 × 900 responsive view stacks the story and financial panels, keeps the action buttons visible, and remains vertically scrollable.
+- Browser logs contained no errors or warnings.
+
+## Comparison history
+
+1. Initial P2: the preview stage measured `1041 × 670`, making the design too tall and causing the real-estate title to wrap across four lines.
+   - Fix: tightened metric spacing, enforced the 16:9 stage, and adjusted display-title sizing.
+   - Post-fix evidence: stage measured `1041 × 586`; title wraps across two lines.
+2. Second P2: the impact group began too high and reduced the distinctive empty space between the financial and impact sections.
+   - Fix: compacted the happiness and asset/liability cards so the impact group can sit lower through flexible spacing.
+   - Post-fix evidence: the normalized comparison aligns the impact heading and bottom-card baseline with the source.
+3. Responsive P2: the mobile action buttons initially overflowed the fixed-height admin bar.
+   - Fix: prevented the action bar from shrinking in the scroll container.
+   - Post-fix evidence: both Close and Edit event are fully visible at `520 × 900`.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain.
+
+### Follow-up polish
+
+- P3: A future game-runtime integration could replace the static preview timer with the simulator’s live countdown. It is intentionally static in the admin sample.
+
+final result: passed

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 type Dataset = {
@@ -929,7 +930,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                       <h2>Event set membership</h2>
                       <span>
                         {eventRecords.length > 0
-                          ? "Every imported CSV row is available to review and edit."
+                          ? "Open any row as a game-screen sample, then edit only when needed."
                           : "Ordered source IDs used to build the game rotation."}
                       </span>
                     </div>
@@ -1033,7 +1034,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                                     )}
                                   </strong>
                                   <small className="event-row-open">
-                                    Edit all fields
+                                    Preview · edit available
                                   </small>
                                 </td>
                               </tr>
@@ -1248,6 +1249,7 @@ function ImportedEventRecordModal({
   onSaved: (record: StoredEventRecord) => void;
 }) {
   const modalRef = useRef<HTMLElement | null>(null);
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
   const [draft, setDraft] = useState<EventRecordData>({ ...record.data });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1323,6 +1325,8 @@ function ImportedEventRecordModal({
         throw new Error(payload.error ?? "The event could not be saved.");
       }
       onSaved(payload.record);
+      setDraft({ ...payload.record.data });
+      setViewMode("preview");
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -1342,185 +1346,435 @@ function ImportedEventRecordModal({
     >
       <article
         ref={modalRef}
-        className="imported-event-modal"
+        className={
+          viewMode === "preview"
+            ? "imported-event-modal event-output-modal"
+            : "imported-event-modal"
+        }
         role="dialog"
         aria-modal="true"
         aria-labelledby="imported-event-title"
         aria-describedby="imported-event-description"
         onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}
       >
-        <header className="imported-event-header">
-          <div
-            className={`event-record-type ${eventTypeTone(record.data.Type)}`}
-            aria-hidden="true"
-          >
-            <span>{eventTypeCode(record.data.Type)}</span>
-          </div>
-          <div>
-            <p
-              className={`event-record-eyebrow ${eventTypeTone(
-                record.data.Type,
-              )}`}
-            >
-              ROW {String(record.rowNumber).padStart(2, "0")} ·{" "}
-              {record.data.Type || "EVENT"}
-            </p>
-            <h2 id="imported-event-title">{eventRecordTitle(draft)}</h2>
-            <p id="imported-event-description">
-              {draft["Short Description"] ||
-                draft["Desciption (EN)"] ||
-                "Edit the complete imported event record below."}
-            </p>
-          </div>
-          <button
-            autoFocus
-            type="button"
-            aria-label="Close event editor"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </header>
-
-        <form onSubmit={saveRecord}>
-          <section className="imported-event-summary">
-            <div>
-              <span>AGE</span>
-              <strong>{draft.Age || "—"}</strong>
-            </div>
-            <div>
-              <span>SCREEN</span>
-              <strong>{eventScreenLabel(draft["Event Screen"])}</strong>
-            </div>
-            <div>
-              <span>TYPE</span>
-              <strong>{draft.Type || "—"}</strong>
-            </div>
-            <div>
-              <span>FINANCIAL EFFECT</span>
-              <strong>{eventFinancialEffect(draft, currencyCode)}</strong>
-            </div>
-          </section>
-
-          <div className="imported-event-form-body">
-            <div className="imported-event-source">
-              <span>EVENT SET</span>
-              <strong>{datasetName}</strong>
-              <span>COUNTRY</span>
-              <strong>
-                {countryMeta[countryCode].label} · {currencyCode} ·{" "}
-                {countryMeta[countryCode].display}
-              </strong>
-              <span>SOURCE FILE</span>
-              <strong>{sourceFileName(record.sourceFile)}</strong>
-              <span>FIELDS</span>
-              <strong>{Object.keys(draft).length} editable values</strong>
-            </div>
-
-            {groups.map((group) => (
-              <section className="event-field-section" key={group.title}>
-                <div className="event-field-section-heading">
-                  <div>
-                    <h3>{group.title}</h3>
-                    <p>{group.description}</p>
-                  </div>
-                  <span>{group.fields.length} fields</span>
-                </div>
-                <div className="event-field-grid">
-                  {group.fields.map((field) => {
-                    const fieldId = `event-${record.id}-${field.replace(
-                      /[^a-zA-Z0-9]+/g,
-                      "-",
-                    )}`;
-                    const value = draft[field] ?? "";
-                    const isLong =
-                      longEventFields.has(field) ||
-                      value.includes("\n") ||
-                      value.length > 120;
-                    return (
-                      <label
-                        className={isLong ? "event-field wide" : "event-field"}
-                        htmlFor={fieldId}
-                        key={field}
-                      >
-                        <span>
-                          {field}
-                          {draft[field] !== record.data[field] && <i>Edited</i>}
-                        </span>
-                        {isLong ? (
-                          <textarea
-                            id={fieldId}
-                            rows={value.length > 260 ? 5 : 3}
-                            value={value}
-                            onChange={(event) =>
-                              setDraft((current) => ({
-                                ...current,
-                                [field]: event.target.value,
-                              }))
-                            }
-                          />
-                        ) : (
-                          <input
-                            id={fieldId}
-                            type="text"
-                            value={value}
-                            onChange={(event) =>
-                              setDraft((current) => ({
-                                ...current,
-                                [field]: event.target.value,
-                              }))
-                            }
-                          />
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-
-          <footer className="imported-event-footer">
-            <div>
-              <strong>
-                {changedFields.length === 0
-                  ? "All changes saved"
-                  : `${changedFields.length} unsaved ${
-                      changedFields.length === 1 ? "field" : "fields"
-                    }`}
-              </strong>
-              <span>
-                Original row order and all imported columns are preserved.
-              </span>
-              {error && <p role="alert">{error}</p>}
-            </div>
-            <div>
+        {viewMode === "preview" ? (
+          <ImportedEventPreview
+            record={record}
+            data={draft}
+            datasetName={datasetName}
+            countryCode={countryCode}
+            currencyCode={currencyCode}
+            onClose={onClose}
+            onEdit={() => {
+              setError("");
+              setViewMode("edit");
+            }}
+          />
+        ) : (
+          <>
+            <header className="imported-event-header">
+              <div
+                className={`event-record-type ${eventTypeTone(record.data.Type)}`}
+                aria-hidden="true"
+              >
+                <span>{eventTypeCode(record.data.Type)}</span>
+              </div>
+              <div>
+                <p
+                  className={`event-record-eyebrow ${eventTypeTone(
+                    record.data.Type,
+                  )}`}
+                >
+                  EDITING ROW {String(record.rowNumber).padStart(2, "0")} ·{" "}
+                  {record.data.Type || "EVENT"}
+                </p>
+                <h2 id="imported-event-title">{eventRecordTitle(draft)}</h2>
+                <p id="imported-event-description">
+                  Change the complete imported event record below. Saved values
+                  will immediately update the sample screen.
+                </p>
+              </div>
               <button
                 type="button"
-                disabled={changedFields.length === 0 || saving}
-                onClick={() => {
-                  setDraft({ ...record.data });
-                  setError("");
-                }}
+                aria-label="Close event editor"
+                onClick={onClose}
               >
-                Reset changes
+                ×
               </button>
-              <button type="button" onClick={onClose}>
-                Close
-              </button>
-              <button
-                className="primary"
-                type="submit"
-                disabled={changedFields.length === 0 || saving}
-              >
-                {saving ? "Saving…" : "Save event"}
-              </button>
-            </div>
-          </footer>
-        </form>
+            </header>
+
+            <form onSubmit={saveRecord}>
+              <section className="imported-event-summary">
+                <div>
+                  <span>AGE</span>
+                  <strong>{draft.Age || "—"}</strong>
+                </div>
+                <div>
+                  <span>SCREEN</span>
+                  <strong>{eventScreenLabel(draft["Event Screen"])}</strong>
+                </div>
+                <div>
+                  <span>TYPE</span>
+                  <strong>{draft.Type || "—"}</strong>
+                </div>
+                <div>
+                  <span>FINANCIAL EFFECT</span>
+                  <strong>{eventFinancialEffect(draft, currencyCode)}</strong>
+                </div>
+              </section>
+
+              <div className="imported-event-form-body">
+                <div className="imported-event-source">
+                  <span>EVENT SET</span>
+                  <strong>{datasetName}</strong>
+                  <span>COUNTRY</span>
+                  <strong>
+                    {countryMeta[countryCode].label} · {currencyCode} ·{" "}
+                    {countryMeta[countryCode].display}
+                  </strong>
+                  <span>SOURCE FILE</span>
+                  <strong>{sourceFileName(record.sourceFile)}</strong>
+                  <span>FIELDS</span>
+                  <strong>{Object.keys(draft).length} editable values</strong>
+                </div>
+
+                {groups.map((group) => (
+                  <section className="event-field-section" key={group.title}>
+                    <div className="event-field-section-heading">
+                      <div>
+                        <h3>{group.title}</h3>
+                        <p>{group.description}</p>
+                      </div>
+                      <span>{group.fields.length} fields</span>
+                    </div>
+                    <div className="event-field-grid">
+                      {group.fields.map((field) => {
+                        const fieldId = `event-${record.id}-${field.replace(
+                          /[^a-zA-Z0-9]+/g,
+                          "-",
+                        )}`;
+                        const value = draft[field] ?? "";
+                        const isLong =
+                          longEventFields.has(field) ||
+                          value.includes("\n") ||
+                          value.length > 120;
+                        return (
+                          <label
+                            className={
+                              isLong ? "event-field wide" : "event-field"
+                            }
+                            htmlFor={fieldId}
+                            key={field}
+                          >
+                            <span>
+                              {field}
+                              {draft[field] !== record.data[field] && (
+                                <i>Edited</i>
+                              )}
+                            </span>
+                            {isLong ? (
+                              <textarea
+                                id={fieldId}
+                                rows={value.length > 260 ? 5 : 3}
+                                value={value}
+                                onChange={(event) =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    [field]: event.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              <input
+                                id={fieldId}
+                                type="text"
+                                value={value}
+                                onChange={(event) =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    [field]: event.target.value,
+                                  }))
+                                }
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              <footer className="imported-event-footer">
+                <div>
+                  <strong>
+                    {changedFields.length === 0
+                      ? "All changes saved"
+                      : `${changedFields.length} unsaved ${
+                          changedFields.length === 1 ? "field" : "fields"
+                        }`}
+                  </strong>
+                  <span>
+                    Original row order and all imported columns are preserved.
+                  </span>
+                  {error && <p role="alert">{error}</p>}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    disabled={changedFields.length === 0 || saving}
+                    onClick={() => {
+                      setDraft({ ...record.data });
+                      setError("");
+                    }}
+                  >
+                    Reset changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft({ ...record.data });
+                      setError("");
+                      setViewMode("preview");
+                    }}
+                  >
+                    Back to preview
+                  </button>
+                  <button
+                    className="primary"
+                    type="submit"
+                    disabled={changedFields.length === 0 || saving}
+                  >
+                    {saving ? "Saving…" : "Save event"}
+                  </button>
+                </div>
+              </footer>
+            </form>
+          </>
+        )}
       </article>
     </div>
   );
+}
+
+function ImportedEventPreview({
+  record,
+  data,
+  datasetName,
+  countryCode,
+  currencyCode,
+  onClose,
+  onEdit,
+}: {
+  record: StoredEventRecord;
+  data: EventRecordData;
+  datasetName: string;
+  countryCode: CountryCode;
+  currencyCode: "MYR" | "CNY";
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const currencyDisplay = countryMeta[countryCode].display;
+  const accessCode = String(record.id).padStart(4, "0");
+  const description =
+    data["Desciption (EN)"] ||
+    data.Description ||
+    data["Short Description"] ||
+    "No player-facing description has been added yet.";
+  const eventSubtype = data.Subtype?.trim() || data.Type?.trim() || "Event";
+  const happiness = eventImpactNumber(data["Happiness Point"]);
+
+  return (
+    <div className="event-output-preview">
+      <header className="event-output-adminbar">
+        <div>
+          <span>SAMPLE GAME SCREEN</span>
+          <strong>
+            {datasetName} · Row {String(record.rowNumber).padStart(2, "0")} ·{" "}
+            {countryCode} / {currencyCode}
+          </strong>
+        </div>
+        <div>
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+          <button className="primary" autoFocus type="button" onClick={onEdit}>
+            Edit event
+          </button>
+        </div>
+      </header>
+
+      <div className="event-output-stage">
+        <section className="event-output-story">
+          <div>
+            <span className="event-output-country">
+              {countryMeta[countryCode].label} · {currencyDisplay}
+            </span>
+            <h2 id="imported-event-title">{eventRecordTitle(data)}</h2>
+            <i aria-hidden="true" />
+            <p id="imported-event-description">{description}</p>
+          </div>
+          <div className="event-output-code">
+            <span>ACCESS CODE</span>
+            <strong>{accessCode}</strong>
+          </div>
+        </section>
+
+        <section className="event-output-data">
+          <div className="event-output-topline">
+            <div>
+              <strong>事件</strong>
+              <span>{eventSubtype.toUpperCase()} EVENT</span>
+            </div>
+            <div className="event-output-timer">
+              <span>TIME REMAINING</span>
+              <strong>00:41</strong>
+            </div>
+          </div>
+
+          <EventOutputSection title="财务快照" subtitle="SNAPSHOT" tone="cyan">
+            <div className="event-output-snapshot-grid">
+              <EventOutputMetric
+                label="主动收入 ACTIVE"
+                value={eventMoney(data["Active Income"], currencyCode)}
+              />
+              <EventOutputMetric
+                label="被动收入 PASSIVE"
+                value={eventMoney(data["Passive Income"], currencyCode)}
+              />
+              <EventOutputMetric
+                label="投资回报率"
+                value={eventPercent(data.ROI)}
+                tone="cyan"
+                badge="ROI"
+              />
+              <EventOutputMetric
+                label="净现金流 FLOW"
+                value={eventMoney(data["Cash Flow"], currencyCode)}
+              />
+              <EventOutputMetric
+                label="支出 EXPENSES"
+                value={eventMoney(data.Expense, currencyCode)}
+                tone="red"
+              />
+            </div>
+          </EventOutputSection>
+
+          <EventOutputSection title="投资组合影响" subtitle="IMPACT" tone="purple">
+            <div className="event-output-impact-grid">
+              <EventOutputMetric
+                className="happiness"
+                label="幸福指数 HAPPINESS"
+                value={eventSignedValue(happiness)}
+                tone={happiness < 0 ? "red" : "green"}
+              />
+              <EventOutputMetric
+                className="downpayment"
+                label="首付 DOWN PAYMENT"
+                value={eventMoney(data["D.Payment"], currencyCode)}
+              />
+              <div className="event-output-balance-stack">
+                <EventOutputMetric
+                  label="资产总额 ASSETS"
+                  value={eventMoney(data["Asset (Value)"], currencyCode)}
+                  tone="green"
+                />
+                <EventOutputMetric
+                  label="总负债 LIABILITIES"
+                  value={eventMoney(data["Liability (Loan)"], currencyCode)}
+                  tone="red"
+                />
+              </div>
+            </div>
+          </EventOutputSection>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function EventOutputSection({
+  title,
+  subtitle,
+  tone,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  tone: "cyan" | "purple";
+  children: ReactNode;
+}) {
+  return (
+    <section className={`event-output-section ${tone}`}>
+      <header>
+        <i aria-hidden="true" />
+        <strong>{title}</strong>
+        <span>{subtitle}</span>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function EventOutputMetric({
+  label,
+  value,
+  tone,
+  badge,
+  className,
+}: {
+  label: string;
+  value: string;
+  tone?: "cyan" | "red" | "green";
+  badge?: string;
+  className?: string;
+}) {
+  return (
+    <article
+      className={`event-output-metric${tone ? ` ${tone}` : ""}${
+        className ? ` ${className}` : ""
+      }`}
+    >
+      <span>{label}</span>
+      {badge && <em>{badge}</em>}
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function eventImpactNumber(value: string | undefined) {
+  const normalized = String(value ?? "0")
+    .replaceAll(",", "")
+    .replace(/[^0-9.-]+/g, "")
+    .trim();
+  const parsed = Number(normalized || "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function eventMoney(
+  value: string | undefined,
+  currencyCode: "MYR" | "CNY",
+) {
+  const parsed = eventImpactNumber(value);
+  const formatted = new Intl.NumberFormat("en-MY", {
+    maximumFractionDigits: 2,
+  }).format(parsed);
+  return `${countryCurrencyDisplay(currencyCode)} ${formatted}`;
+}
+
+function eventPercent(value: string | undefined) {
+  const normalized = String(value ?? "0").trim();
+  if (!normalized) return "0%";
+  return normalized.endsWith("%") ? normalized : `${normalized}%`;
+}
+
+function eventSignedValue(value: number) {
+  if (value > 0) return `+${value}`;
+  return String(value);
+}
+
+function countryCurrencyDisplay(currencyCode: "MYR" | "CNY") {
+  return currencyCode === "MYR" ? "RM" : "RMB";
 }
 
 function EventRecordModal({
