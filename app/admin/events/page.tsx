@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { requireAdminSession } from "@/app/admin-session";
 import { EventDatasets } from "./EventDatasets";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function EventDatasetsPage() {
-  const user = await getChatGPTUser();
+  const user = await requireAdminSession("/admin/events");
 
   return (
-    <EventDatasets
-      user={{
-        name: user?.displayName ?? "NaviWealth Admin",
-        email: user?.email ?? "Local preview",
-      }}
-    />
+    <EventDatasets user={user} />
   );
 }

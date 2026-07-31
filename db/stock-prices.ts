@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 export type StockPricePoint = {
   period: number;
@@ -40,28 +41,33 @@ export class StockPriceStoreError extends Error {
   }
 }
 
-export async function getStockPriceSeries(stockId: number) {
+export async function getStockPriceSeries(
+  stockId: number,
+  actor: AdminSessionUser,
+) {
   const response = await callGateway({
     operation: "getStockPriceSeries",
     id: stockId,
-  });
+  }, actor);
   return requiredSeries(response);
 }
 
 export async function updateStockPriceSeries(
   stockId: number,
   updates: StockPriceUpdate[],
+  actor: AdminSessionUser,
 ) {
   const response = await callGateway({
     operation: "updateStockPrices",
     id: stockId,
     input: { updates },
-  });
+  }, actor);
   return requiredSeries(response);
 }
 
 async function callGateway(
   payload: Record<string, unknown>,
+  actor: AdminSessionUser,
 ): Promise<GatewayResponse> {
   const runtime = env as unknown as RuntimeEnv;
   const supabaseUrl = runtime.SUPABASE_URL?.replace(/\/+$/, "");
@@ -84,7 +90,10 @@ async function callGateway(
           "content-type": "application/json",
           "x-naviwealth-db-key": gatewayKey,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          actorUserId: actor.authUserId,
+        }),
         signal: AbortSignal.timeout(15_000),
       },
     );

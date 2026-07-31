@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 import { stockInventory } from "./stock-inventory";
 
 type Dataset = {
@@ -26,7 +28,7 @@ type ModalState =
 export function StockDatasets({
   user,
 }: {
-  user: { name: string; email: string };
+  user: AdminSessionUser;
 }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [limit, setLimit] = useState(30);
@@ -36,6 +38,8 @@ export function StockDatasets({
   const [modal, setModal] = useState<ModalState>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+  const canEdit = user.permissions.includes("datasets.edit");
+  const canReuse = user.permissions.includes("datasets.reuse");
 
   const loadDatasets = useCallback(async () => {
     setLoading(true);
@@ -60,6 +64,8 @@ export function StockDatasets({
   }, []);
 
   useEffect(() => {
+    // Fetching is the external synchronization performed by this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDatasets();
   }, [loadDatasets]);
 
@@ -164,7 +170,7 @@ export function StockDatasets({
   return (
     <div className="admin-app stock-admin-page">
       <aside className="admin-sidebar">
-        <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
+        <Link className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
             <span>N</span>
           </span>
@@ -172,37 +178,41 @@ export function StockDatasets({
             NaviWealth
             <small>ADMIN PORTAL</small>
           </span>
-        </a>
+        </Link>
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a href="/admin">
+          <Link href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
-          </a>
-          <a href="/admin/simulator">
+          </Link>
+          <Link href="/admin/simulator">
             <span className="nav-glyph">▶</span>
             Simulator
-          </a>
-          <a className="active" href="/admin/stocks">
+          </Link>
+          <Link className="active" href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
             <em>{stockSets.length}</em>
-          </a>
-          <a href="/admin/events">
+          </Link>
+          <Link href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
             <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
-          </a>
+          </Link>
           <p>GAME SYSTEM</p>
-          <a href="/admin/users">
-            <span className="nav-glyph">◎</span>
-            User control
-          </a>
-          <a href="/admin/game-settings">
-            <span className="nav-glyph">⚙</span>
-            Game settings
-          </a>
+          {user.permissions.includes("users.manage") ? (
+            <Link href="/admin/users">
+              <span className="nav-glyph">◎</span>
+              User control
+            </Link>
+          ) : null}
+          {user.permissions.includes("settings.edit") ? (
+            <Link href="/admin/game-settings">
+              <span className="nav-glyph">⚙</span>
+              Game settings
+            </Link>
+          ) : null}
         </nav>
 
         <div className="stock-side-note">
@@ -221,7 +231,7 @@ export function StockDatasets({
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+          <a href="/api/auth/logout" aria-label="Sign out">
             ↗
           </a>
         </div>
@@ -255,7 +265,7 @@ export function StockDatasets({
           <section className="admin-heading">
             <div>
               <div className="stock-breadcrumb">
-                <a href="/admin">Dataset control</a>
+                <Link href="/admin">Dataset control</Link>
                 <span>/</span>
                 <strong>Stocks</strong>
               </div>
@@ -266,7 +276,7 @@ export function StockDatasets({
                 and deploy them across any game.
               </p>
             </div>
-            <button
+            {canEdit ? <button
               className="admin-primary"
               type="button"
               onClick={() => setModal({ mode: "create", dataset: null })}
@@ -274,7 +284,7 @@ export function StockDatasets({
             >
               <span aria-hidden="true">＋</span>
               New stock dataset
-            </button>
+            </button> : <span className="access-mode-badge">READ-ONLY ACCESS</span>}
           </section>
 
           <section className="metric-grid stock-metrics">
@@ -341,13 +351,15 @@ export function StockDatasets({
                       key={dataset.id}
                       dataset={dataset}
                       busy={busy}
+                      canEdit={canEdit}
+                      canReuse={canReuse}
                       onEdit={() => setModal({ mode: "edit", dataset })}
                       onReuse={() => void runAction(dataset, "reuse")}
                       onDuplicate={() => void runAction(dataset, "duplicate")}
                       onDelete={() => void deleteDataset(dataset)}
                     />
                   ))}
-              {!loading && stockSets.length === 0 && (
+              {!loading && stockSets.length === 0 && canEdit && (
                 <button
                   className="empty-stock-card"
                   type="button"
@@ -505,6 +517,8 @@ function Metric({
 function StockSetCard({
   dataset,
   busy,
+  canEdit,
+  canReuse,
   onEdit,
   onReuse,
   onDuplicate,
@@ -512,6 +526,8 @@ function StockSetCard({
 }: {
   dataset: Dataset;
   busy: string | null;
+  canEdit: boolean;
+  canReuse: boolean;
   onEdit: () => void;
   onReuse: () => void;
   onDuplicate: () => void;
@@ -523,20 +539,20 @@ function StockSetCard({
 
   return (
     <article className="stock-set-card stock-set-detail-card">
-      <a
+      <Link
         className="stock-card-detail-link"
         href={`/admin/stocks/${dataset.id}`}
         aria-label={`View details for ${dataset.name}`}
       >
         <span className="sr-only">View {dataset.name} details</span>
-      </a>
+      </Link>
       <div className="stock-set-card-top">
         <span className="dataset-kind-icon stock">ST</span>
         <span className={`status-label ${dataset.status}`}>
           <i />
           {dataset.status}
         </span>
-        <details className="row-menu">
+        {canEdit ? <details className="row-menu">
           <summary aria-label={`More actions for ${dataset.name}`}>•••</summary>
           <div>
             <button type="button" onClick={onDuplicate}>
@@ -546,7 +562,7 @@ function StockSetCard({
               Delete dataset
             </button>
           </div>
-        </details>
+        </details> : null}
       </div>
       <h3>{dataset.name}</h3>
       <p>{dataset.description}</p>
@@ -572,16 +588,14 @@ function StockSetCard({
         </span>
       </div>
       <div className="stock-set-actions">
-        <button type="button" onClick={onEdit}>
-          Configure
-        </button>
-        <button
+        {canEdit ? <button type="button" onClick={onEdit}>Configure</button> : <span>VIEW ONLY</span>}
+        {canReuse ? <button
           type="button"
           onClick={onReuse}
           disabled={busy === `reuse-${dataset.id}`}
         >
           {busy === `reuse-${dataset.id}` ? "Preparing…" : "Use in game →"}
-        </button>
+        </button> : null}
       </div>
     </article>
   );

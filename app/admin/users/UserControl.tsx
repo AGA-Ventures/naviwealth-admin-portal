@@ -1,13 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { AdminSessionUser } from "@/app/admin-access";
 import { AdminControlSidebar } from "../AdminControlSidebar";
 
-type AdminUserRole = "owner" | "admin" | "facilitator" | "viewer";
+type AdminUserRole = "superadmin" | "admin" | "facilitator" | "viewer";
 type AdminUserStatus = "active" | "invited" | "suspended";
 
 type AdminUser = {
   id: number;
+  authUserId: string | null;
   name: string;
   email: string;
   role: AdminUserRole;
@@ -17,15 +19,24 @@ type AdminUser = {
   updatedAt: string;
 };
 
+type AdminAuditLog = {
+  id: number;
+  actorName: string;
+  actorEmail: string;
+  actorRole: AdminUserRole;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  summary: string;
+  createdAt: string;
+};
+
 type UserControlProps = {
-  currentUser: {
-    name: string;
-    email: string;
-  };
+  currentUser: AdminSessionUser;
 };
 
 const roleLabels: Record<AdminUserRole, string> = {
-  owner: "Owner",
+  superadmin: "Superadmin",
   admin: "Admin",
   facilitator: "Facilitator",
   viewer: "Viewer",
@@ -39,6 +50,7 @@ const statusLabels: Record<AdminUserStatus, string> = {
 
 export function UserControl({ currentUser }: UserControlProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | AdminUserStatus>("all");
   const [loading, setLoading] = useState(true);
@@ -48,6 +60,7 @@ export function UserControl({ currentUser }: UserControlProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
   const [inviteRole, setInviteRole] =
     useState<AdminUserRole>("facilitator");
 
@@ -55,14 +68,24 @@ export function UserControl({ currentUser }: UserControlProps) {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch("/api/admin-users", {
-          cache: "no-store",
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to load admin users.");
+        const [usersResponse, auditResponse] = await Promise.all([
+          fetch("/api/admin-users", { cache: "no-store" }),
+          fetch("/api/audit-logs", { cache: "no-store" }),
+        ]);
+        const [usersPayload, auditPayload] = await Promise.all([
+          usersResponse.json(),
+          auditResponse.json(),
+        ]);
+        if (!usersResponse.ok) {
+          throw new Error(usersPayload.error ?? "Unable to load admin users.");
         }
-        if (!cancelled) setUsers(payload.users);
+        if (!auditResponse.ok) {
+          throw new Error(auditPayload.error ?? "Unable to load audit history.");
+        }
+        if (!cancelled) {
+          setUsers(usersPayload.users);
+          setAuditLogs(auditPayload.logs);
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError(
@@ -104,7 +127,7 @@ export function UserControl({ currentUser }: UserControlProps) {
     () => ({
       active: users.filter((user) => user.status === "active").length,
       admins: users.filter(
-        (user) => user.role === "owner" || user.role === "admin",
+        (user) => user.role === "superadmin" || user.role === "admin",
       ).length,
       facilitators: users.filter((user) => user.role === "facilitator").length,
       invited: users.filter((user) => user.status === "invited").length,
@@ -132,6 +155,7 @@ export function UserControl({ currentUser }: UserControlProps) {
           item.id === payload.user.id ? payload.user : item,
         ),
       );
+      await refreshAuditLogs();
       setToast(`${payload.user.name} updated.`);
     } catch (updateError) {
       setToast(
@@ -155,7 +179,8 @@ export function UserControl({ currentUser }: UserControlProps) {
           name: inviteName,
           email: inviteEmail,
           role: inviteRole,
-          status: "invited",
+          password: invitePassword,
+          status: "active",
         }),
       });
       const payload = await response.json();
@@ -165,9 +190,11 @@ export function UserControl({ currentUser }: UserControlProps) {
       setUsers((current) => [...current, payload.user]);
       setInviteName("");
       setInviteEmail("");
+      setInvitePassword("");
       setInviteRole("facilitator");
       setInviteOpen(false);
-      setToast(`${payload.user.name} added as an invited user.`);
+      await refreshAuditLogs();
+      setToast(`${payload.user.name} can now sign in.`);
     } catch (inviteError) {
       setToast(
         inviteError instanceof Error
@@ -177,6 +204,15 @@ export function UserControl({ currentUser }: UserControlProps) {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function refreshAuditLogs() {
+    const response = await fetch("/api/audit-logs", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to refresh audit history.");
+    }
+    setAuditLogs(payload.logs);
   }
 
   return (
@@ -232,7 +268,7 @@ export function UserControl({ currentUser }: UserControlProps) {
               onClick={() => setInviteOpen(true)}
             >
               <span aria-hidden="true">＋</span>
-              Invite user
+              Create login
             </button>
           </section>
 
@@ -249,7 +285,7 @@ export function UserControl({ currentUser }: UserControlProps) {
               <div>
                 <p>Elevated access</p>
                 <strong>{totals.admins}</strong>
-                <span>owners and administrators</span>
+                <span>superadmins and administrators</span>
               </div>
               <span className="metric-symbol">◆</span>
             </article>
@@ -384,7 +420,10 @@ export function UserControl({ currentUser }: UserControlProps) {
                                 user.status === "active" ? "suspend" : "enable"
                               }`}
                               type="button"
-                              disabled={busy === user.id || user.role === "owner"}
+                              disabled={
+                                busy === user.id ||
+                                user.authUserId === currentUser.authUserId
+                              }
                               onClick={() =>
                                 void updateUser(user, {
                                   status:
@@ -394,8 +433,8 @@ export function UserControl({ currentUser }: UserControlProps) {
                                 })
                               }
                               title={
-                                user.role === "owner"
-                                  ? "Owner access cannot be suspended here."
+                                user.authUserId === currentUser.authUserId
+                                  ? "You cannot suspend your own account."
                                   : undefined
                               }
                             >
@@ -426,8 +465,15 @@ export function UserControl({ currentUser }: UserControlProps) {
                   <article>
                     <span className="purple">◆</span>
                     <div>
-                      <strong>Owner / Admin</strong>
-                      <p>Full control of data, users, and game configuration.</p>
+                      <strong>Superadmin</strong>
+                      <p>Controls accounts, permissions, settings, and audit history.</p>
+                    </div>
+                  </article>
+                  <article>
+                    <span className="purple">◇</span>
+                    <div>
+                      <strong>Admin</strong>
+                      <p>Edits datasets and shared game configuration.</p>
                     </div>
                   </article>
                   <article>
@@ -476,6 +522,40 @@ export function UserControl({ currentUser }: UserControlProps) {
               </section>
             </aside>
           </section>
+
+          <section className="dataset-panel audit-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">SUPERADMIN AUDIT</p>
+                <h2>Action history</h2>
+                <p>Every saved change records who made it and what was affected.</p>
+              </div>
+              <span className="panel-count">{auditLogs.length} recent actions</span>
+            </div>
+            {loading ? (
+              <div className="audit-empty">Loading action history…</div>
+            ) : auditLogs.length === 0 ? (
+              <div className="audit-empty">No administrative changes recorded yet.</div>
+            ) : (
+              <div className="audit-list">
+                {auditLogs.slice(0, 40).map((log) => (
+                  <article key={log.id}>
+                    <span className="audit-action-icon">{auditIcon(log.action)}</span>
+                    <div className="audit-copy">
+                      <strong>{log.summary}</strong>
+                      <span>
+                        {log.actorName} · {roleLabels[log.actorRole]} · {log.actorEmail}
+                      </span>
+                    </div>
+                    <div className="audit-resource">
+                      <span>{resourceLabel(log.resourceType)}</span>
+                      <time dateTime={log.createdAt}>{fullDate(log.createdAt)}</time>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </main>
 
@@ -491,8 +571,8 @@ export function UserControl({ currentUser }: UserControlProps) {
             <div className="modal-header">
               <div>
                 <p className="eyebrow">WORKSPACE ACCESS</p>
-                <h2>Invite a user</h2>
-                <p>Create a pending account entry and assign its starting role.</p>
+                <h2>Create administrator login</h2>
+                <p>Create a verified login and assign its starting permission level.</p>
               </div>
               <button
                 type="button"
@@ -538,8 +618,22 @@ export function UserControl({ currentUser }: UserControlProps) {
                   ))}
                 </select>
                 <small>
-                  The account will remain invited until you enable its access.
+                  Only superadmins can create accounts or change these roles.
                 </small>
+              </label>
+              <label className="admin-field wide">
+                <span>Temporary password</span>
+                <input
+                  required
+                  type="password"
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  value={invitePassword}
+                  onChange={(event) => setInvitePassword(event.target.value)}
+                  placeholder="At least 12 characters"
+                />
+                <small>Share this securely. The user can sign in immediately.</small>
               </label>
             </div>
             <div className="modal-actions">
@@ -551,7 +645,7 @@ export function UserControl({ currentUser }: UserControlProps) {
                 type="submit"
                 disabled={busy === "invite"}
               >
-                {busy === "invite" ? "Creating…" : "Create invitation"}
+                {busy === "invite" ? "Creating…" : "Create login"}
               </button>
             </div>
           </form>
@@ -586,4 +680,22 @@ function relativeDate(value: string | null) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function fullDate(value: string) {
+  return new Intl.DateTimeFormat("en-MY", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function resourceLabel(value: string) {
+  return value.replaceAll("_", " ").toUpperCase();
+}
+
+function auditIcon(action: string) {
+  if (action.includes("delete") || action.includes("suspend")) return "−";
+  if (action.includes("create") || action.includes("duplicate")) return "+";
+  if (action.includes("reuse")) return "↻";
+  return "✓";
 }

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 export const DATASET_LIMIT = 30;
 
@@ -59,57 +60,66 @@ export class DatasetStoreError extends Error {
   }
 }
 
-export async function listDatasets() {
-  const response = await callGateway({ operation: "list" });
+export async function listDatasets(actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "list" }, actor);
   return response.datasets ?? [];
 }
 
-export async function getDataset(id: number) {
-  const response = await callGateway({ operation: "get", id });
+export async function getDataset(id: number, actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "get", id }, actor);
   return requiredDataset(response);
 }
 
-export async function createDataset(input: DatasetInput) {
-  const response = await callGateway({ operation: "create", input });
+export async function createDataset(
+  input: DatasetInput,
+  actor: AdminSessionUser,
+) {
+  const response = await callGateway({ operation: "create", input }, actor);
   return requiredDataset(response);
 }
 
-export async function updateDataset(id: number, input: Partial<DatasetInput>) {
-  const response = await callGateway({ operation: "update", id, input });
+export async function updateDataset(
+  id: number,
+  input: Partial<DatasetInput>,
+  actor: AdminSessionUser,
+) {
+  const response = await callGateway({ operation: "update", id, input }, actor);
   return requiredDataset(response);
 }
 
-export async function deleteDataset(id: number) {
-  const response = await callGateway({ operation: "delete", id });
+export async function deleteDataset(id: number, actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "delete", id }, actor);
   if (!response.deleted) {
     throw new DatasetStoreError("The dataset could not be deleted.", 500);
   }
 }
 
-export async function duplicateDataset(id: number) {
-  const response = await callGateway({ operation: "duplicate", id });
+export async function duplicateDataset(id: number, actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "duplicate", id }, actor);
   return requiredDataset(response);
 }
 
-export async function reuseDataset(id: number) {
-  const response = await callGateway({ operation: "reuse", id });
+export async function reuseDataset(id: number, actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "reuse", id }, actor);
   return requiredDataset(response);
 }
 
 export async function createCountryVariant(
   id: number,
   countryCode: CountryCode,
+  actor: AdminSessionUser,
 ) {
   const response = await callGateway({
     operation: "createCountryVariant",
     id,
     input: { countryCode },
-  });
+  }, actor);
   return requiredDataset(response);
 }
 
 async function callGateway(
   payload: Record<string, unknown>,
+  actor: AdminSessionUser,
 ): Promise<GatewayResponse> {
   const runtime = env as unknown as RuntimeEnv;
   const supabaseUrl = runtime.SUPABASE_URL?.replace(/\/+$/, "");
@@ -132,7 +142,10 @@ async function callGateway(
           "content-type": "application/json",
           "x-naviwealth-db-key": gatewayKey,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          actorUserId: actor.authUserId,
+        }),
         signal: AbortSignal.timeout(15_000),
       },
     );

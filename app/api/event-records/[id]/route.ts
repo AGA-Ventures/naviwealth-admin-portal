@@ -5,6 +5,8 @@ import {
 } from "@/db/event-records";
 import {
   getDatasetRequestUser,
+  forbiddenResponse,
+  hasRequestPermission,
   unauthorizedResponse,
 } from "@/app/api/datasets/auth";
 
@@ -15,12 +17,19 @@ type RouteContext = {
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "datasets.edit")) {
+    return forbiddenResponse("Administrator edit access is required.");
+  }
 
   try {
     const { id: rawId } = await context.params;
     const recordId = positiveId(rawId);
     const payload = (await request.json()) as { data?: EventRecordData };
-    const record = await updateEventRecord(recordId, payload.data ?? {});
+    const record = await updateEventRecord(
+      recordId,
+      payload.data ?? {},
+      user,
+    );
     return Response.json({ record });
   } catch (error) {
     return eventStoreErrorResponse(error);

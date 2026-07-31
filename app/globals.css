@@ -8106,6 +8106,106 @@ article.green .event-type-track i {
   margin: 21px 25px 24px;
 }
 
+.audit-panel {
+  margin-top: 15px;
+}
+
+.audit-list {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.audit-list article {
+  min-height: 68px;
+  padding: 13px 20px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 180px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid rgba(29, 41, 61, 0.58);
+}
+
+.audit-action-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(168, 85, 247, 0.24);
+  border-radius: 8px;
+  color: #c27aff;
+  background: rgba(168, 85, 247, 0.07);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+}
+
+.audit-copy,
+.audit-resource {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.audit-copy strong {
+  overflow: hidden;
+  color: #d6deea;
+  font-size: 9px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-copy span,
+.audit-resource {
+  color: #526179;
+  font-size: 7px;
+}
+
+.audit-resource {
+  align-items: flex-end;
+  font-family: var(--font-geist-mono), monospace;
+  text-align: right;
+}
+
+.audit-resource > span {
+  color: var(--cyan);
+  letter-spacing: 0.06em;
+}
+
+.audit-empty {
+  min-height: 110px;
+  padding: 30px;
+  display: grid;
+  place-items: center;
+  border-top: 1px solid rgba(29, 41, 61, 0.58);
+  color: #60708a;
+  font-size: 9px;
+}
+
+.access-mode-badge,
+.read-only-row,
+.stock-set-actions > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #71819a;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.access-mode-badge {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: rgba(15, 23, 43, 0.45);
+}
+
+.dataset-name-cell:disabled {
+  cursor: default;
+}
+
 .settings-top-context {
   display: flex;
   flex-direction: column;
@@ -8555,6 +8655,16 @@ article.green .event-type-track i {
   .settings-fields,
   .settings-toggles {
     grid-template-columns: 1fr;
+  }
+
+  .audit-list article {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .audit-resource {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
   }
 
   .number-setting,

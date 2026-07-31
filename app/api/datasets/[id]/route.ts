@@ -9,6 +9,8 @@ import {
 } from "@/db/datasets";
 import {
   getDatasetRequestUser,
+  forbiddenResponse,
+  hasRequestPermission,
   unauthorizedResponse,
 } from "../auth";
 
@@ -22,7 +24,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const id = await datasetId(context);
-    const dataset = await getDataset(id);
+    const dataset = await getDataset(id, user);
     return Response.json({ dataset });
   } catch (error) {
     return storeErrorResponse(error);
@@ -32,11 +34,14 @@ export async function GET(request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "datasets.edit")) {
+    return forbiddenResponse("Administrator edit access is required.");
+  }
 
   try {
     const id = await datasetId(context);
     const payload = await request.json();
-    const dataset = await updateDataset(id, payload);
+    const dataset = await updateDataset(id, payload, user);
     return Response.json({ dataset });
   } catch (error) {
     return storeErrorResponse(error);
@@ -54,18 +59,31 @@ export async function POST(request: Request, context: RouteContext) {
       countryCode?: "MY" | "CN";
     };
     if (payload.action === "countryVariant") {
+      if (!hasRequestPermission(user, "datasets.edit")) {
+        return forbiddenResponse("Administrator edit access is required.");
+      }
       if (payload.countryCode !== "MY" && payload.countryCode !== "CN") {
         throw new DatasetStoreError("Select a supported country.", 400);
       }
-      const dataset = await createCountryVariant(id, payload.countryCode);
+      const dataset = await createCountryVariant(
+        id,
+        payload.countryCode,
+        user,
+      );
       return Response.json({ dataset }, { status: 201 });
     }
     if (payload.action === "duplicate") {
-      const dataset = await duplicateDataset(id);
+      if (!hasRequestPermission(user, "datasets.edit")) {
+        return forbiddenResponse("Administrator edit access is required.");
+      }
+      const dataset = await duplicateDataset(id, user);
       return Response.json({ dataset }, { status: 201 });
     }
     if (payload.action === "reuse") {
-      const dataset = await reuseDataset(id);
+      if (!hasRequestPermission(user, "datasets.reuse")) {
+        return forbiddenResponse("Facilitator access is required.");
+      }
+      const dataset = await reuseDataset(id, user);
       return Response.json({ dataset });
     }
     throw new DatasetStoreError("Unsupported dataset action.", 400);
@@ -77,10 +95,13 @@ export async function POST(request: Request, context: RouteContext) {
 export async function DELETE(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "datasets.edit")) {
+    return forbiddenResponse("Administrator edit access is required.");
+  }
 
   try {
     const id = await datasetId(context);
-    await deleteDataset(id);
+    await deleteDataset(id, user);
     return Response.json({ deleted: true });
   } catch (error) {
     return storeErrorResponse(error);

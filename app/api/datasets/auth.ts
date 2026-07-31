@@ -1,20 +1,18 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import type { AdminPermission } from "@/app/admin-access";
+import {
+  getRequestAdminUser,
+  requireRequestPermission,
+} from "@/app/admin-session";
 
 export async function getDatasetRequestUser(request: Request) {
-  const hostname = new URL(request.url).hostname;
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1"
-  ) {
-    return {
-      displayName: "Local Admin",
-      email: "local@naviwealth.test",
-      fullName: "Local Admin",
-    };
-  }
+  return getRequestAdminUser(request);
+}
 
-  return getChatGPTUser();
+export function hasRequestPermission(
+  user: NonNullable<Awaited<ReturnType<typeof getDatasetRequestUser>>>,
+  permission: AdminPermission,
+) {
+  return requireRequestPermission(user, permission);
 }
 
 export function unauthorizedResponse() {
@@ -22,4 +20,8 @@ export function unauthorizedResponse() {
     { error: "Sign in is required to manage this workspace." },
     { status: 401 },
   );
+}
+
+export function forbiddenResponse(message = "You do not have permission for this action.") {
+  return Response.json({ error: message }, { status: 403 });
 }

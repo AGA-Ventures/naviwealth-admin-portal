@@ -5,6 +5,8 @@ import {
 } from "@/db/admin-controls";
 import {
   getDatasetRequestUser,
+  forbiddenResponse,
+  hasRequestPermission,
   unauthorizedResponse,
 } from "../datasets/auth";
 
@@ -13,7 +15,7 @@ export async function GET(request: Request) {
   if (!user) return unauthorizedResponse();
 
   try {
-    return Response.json({ settings: await getGameSettings() });
+    return Response.json({ settings: await getGameSettings(user) });
   } catch (error) {
     return settingsErrorResponse(error);
   }
@@ -22,14 +24,14 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "settings.edit")) {
+    return forbiddenResponse("Administrator settings access is required.");
+  }
 
   try {
     const payload = await request.json();
     return Response.json({
-      settings: await updateGameSettings({
-        ...payload,
-        updatedBy: user.email ?? user.displayName ?? "NaviWealth Admin",
-      }),
+      settings: await updateGameSettings(payload, user),
     });
   } catch (error) {
     return settingsErrorResponse(error);

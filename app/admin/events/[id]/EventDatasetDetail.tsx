@@ -9,6 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 type Dataset = {
   id: number;
@@ -41,7 +43,7 @@ const countryMeta: Record<
 
 type DetailProps = {
   datasetId: string;
-  user: { name: string; email: string };
+  user: AdminSessionUser;
 };
 
 type EventCategory = "capital-gain" | "cashflow" | "expenses" | "market";
@@ -478,6 +480,8 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   const eventTriggerRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+  const canEdit = user.permissions.includes("datasets.edit");
+  const canReuse = user.permissions.includes("datasets.reuse");
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -524,6 +528,8 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   }, [datasetId]);
 
   useEffect(() => {
+    // Fetching is the external synchronization performed by this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDetail();
   }, [loadDetail]);
 
@@ -600,7 +606,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Action failed.");
-      window.location.href = `/admin/events/${payload.dataset.id}`;
+      window.location.assign(`/admin/events/${payload.dataset.id}`);
     } catch (actionError) {
       setToast(
         actionError instanceof Error ? actionError.message : "Action failed.",
@@ -647,7 +653,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
   return (
     <div className="admin-app event-detail-page">
       <aside className="admin-sidebar">
-        <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
+        <Link className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
             <span>N</span>
           </span>
@@ -655,37 +661,41 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
             NaviWealth
             <small>ADMIN PORTAL</small>
           </span>
-        </a>
+        </Link>
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a href="/admin">
+          <Link href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
-          </a>
-          <a href="/admin/simulator">
+          </Link>
+          <Link href="/admin/simulator">
             <span className="nav-glyph">▶</span>
             Simulator
-          </a>
-          <a href="/admin/stocks">
+          </Link>
+          <Link href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
             <em>{stockCount}</em>
-          </a>
-          <a className="active" href="/admin/events">
+          </Link>
+          <Link className="active" href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
             <em>{eventCount}</em>
-          </a>
+          </Link>
           <p>GAME SYSTEM</p>
-          <a href="/admin/users">
-            <span className="nav-glyph">◎</span>
-            User control
-          </a>
-          <a href="/admin/game-settings">
-            <span className="nav-glyph">⚙</span>
-            Game settings
-          </a>
+          {user.permissions.includes("users.manage") ? (
+            <Link href="/admin/users">
+              <span className="nav-glyph">◎</span>
+              User control
+            </Link>
+          ) : null}
+          {user.permissions.includes("settings.edit") ? (
+            <Link href="/admin/game-settings">
+              <span className="nav-glyph">⚙</span>
+              Game settings
+            </Link>
+          ) : null}
         </nav>
 
         {dataset && (
@@ -711,7 +721,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+          <a href="/api/auth/logout" aria-label="Sign out">
             ↗
           </a>
         </div>
@@ -725,9 +735,9 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
             </span>
             <strong>NaviWealth</strong>
           </div>
-          <a className="detail-back-link" href="/admin/events">
+          <Link className="detail-back-link" href="/admin/events">
             ← Back to event datasets
-          </a>
+          </Link>
           <div className="topbar-status">
             <span className="status-dot" />
             EVENT ENGINE ONLINE
@@ -742,15 +752,15 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
               <span>!</span>
               <h1>Event set unavailable</h1>
               <p>{error}</p>
-              <a href="/admin/events">Return to Event Datasets</a>
+              <Link href="/admin/events">Return to Event Datasets</Link>
             </section>
           ) : (
             <>
               <section className="event-detail-hero">
                 <div className="stock-breadcrumb">
-                  <a href="/admin">Dataset control</a>
+                  <Link href="/admin">Dataset control</Link>
                   <span>/</span>
-                  <a href="/admin/events">Events</a>
+                  <Link href="/admin/events">Events</Link>
                   <span>/</span>
                   <strong>{dataset.name}</strong>
                 </div>
@@ -764,7 +774,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                     );
                     if (variant) {
                       return (
-                        <a
+                        <Link
                           className={
                             dataset.countryCode === countryCode
                               ? "active"
@@ -776,7 +786,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                           <strong>{countryCode}</strong>
                           <span>{countryMeta[countryCode].label}</span>
                           <em>{countryMeta[countryCode].display}</em>
-                        </a>
+                        </Link>
                       );
                     }
                     return (
@@ -820,17 +830,17 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                     <p>{dataset.description}</p>
                   </div>
                   <div className="event-detail-actions">
-                    <button type="button" onClick={() => setEditing(true)}>
+                    {canEdit ? <button type="button" onClick={() => setEditing(true)}>
                       Configure set
-                    </button>
-                    <button
+                    </button> : null}
+                    {canEdit ? <button
                       type="button"
                       onClick={() => void runAction("duplicate")}
                       disabled={busy === "duplicate"}
                     >
                       {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
-                    </button>
-                    {missingCountryCode && (
+                    </button> : null}
+                    {canEdit && missingCountryCode && (
                       <button
                         type="button"
                         onClick={() =>
@@ -843,7 +853,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                           : `Create ${missingCountryCode} variant`}
                       </button>
                     )}
-                    <button
+                    {canReuse ? <button
                       className="event-primary"
                       type="button"
                       onClick={() => void runAction("reuse")}
@@ -862,7 +872,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                         : busy === "reuse"
                           ? "Preparing…"
                           : "Use in game →"}
-                    </button>
+                    </button> : <span className="access-mode-badge">VIEW ONLY</span>}
                   </div>
                 </div>
               </section>
@@ -881,9 +891,9 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
                       embedded currency text before marking it ready.
                     </p>
                   </div>
-                  <button type="button" onClick={() => setEditing(true)}>
+                  {canEdit ? <button type="button" onClick={() => setEditing(true)}>
                     Review settings
-                  </button>
+                  </button> : null}
                 </section>
               )}
 
@@ -1201,6 +1211,7 @@ export function EventDatasetDetail({ datasetId, user }: DetailProps) {
           datasetName={dataset.name}
           countryCode={dataset.countryCode}
           currencyCode={dataset.currencyCode}
+          canEdit={canEdit}
           onClose={closeStoredEventRecord}
           onSaved={(updated) => {
             setEventRecords((current) =>
@@ -1229,6 +1240,7 @@ function ImportedEventRecordModal({
   datasetName,
   countryCode,
   currencyCode,
+  canEdit,
   onClose,
   onSaved,
 }: {
@@ -1236,6 +1248,7 @@ function ImportedEventRecordModal({
   datasetName: string;
   countryCode: CountryCode;
   currencyCode: "MYR" | "CNY";
+  canEdit: boolean;
   onClose: () => void;
   onSaved: (record: StoredEventRecord) => void;
 }) {
@@ -1355,6 +1368,7 @@ function ImportedEventRecordModal({
             datasetName={datasetName}
             countryCode={countryCode}
             currencyCode={currencyCode}
+            canEdit={canEdit}
             onClose={onClose}
             onEdit={() => {
               setError("");
@@ -1554,6 +1568,7 @@ function ImportedEventPreview({
   datasetName,
   countryCode,
   currencyCode,
+  canEdit,
   onClose,
   onEdit,
 }: {
@@ -1562,6 +1577,7 @@ function ImportedEventPreview({
   datasetName: string;
   countryCode: CountryCode;
   currencyCode: "MYR" | "CNY";
+  canEdit: boolean;
   onClose: () => void;
   onEdit: () => void;
 }) {
@@ -1589,9 +1605,13 @@ function ImportedEventPreview({
           <button type="button" onClick={onClose}>
             Close
           </button>
-          <button className="primary" autoFocus type="button" onClick={onEdit}>
-            Edit event
-          </button>
+          {canEdit ? (
+            <button className="primary" autoFocus type="button" onClick={onEdit}>
+              Edit event
+            </button>
+          ) : (
+            <span className="access-mode-badge">VIEW ONLY</span>
+          )}
         </div>
       </header>
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { requireAdminSession } from "@/app/admin-session";
 import { StockDatasetDetail } from "./StockDatasetDetail";
 
 export const dynamic = "force-dynamic";
@@ -15,15 +15,15 @@ export default async function StockDatasetDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, user] = await Promise.all([params, getChatGPTUser()]);
+  const [{ id }, user] = await Promise.all([
+    params,
+    requireAdminSession("/admin/stocks"),
+  ]);
 
   return (
     <StockDatasetDetail
       datasetId={id}
-      user={{
-        name: user?.displayName ?? "NaviWealth Admin",
-        email: user?.email ?? "Local preview",
-      }}
+      user={user}
     />
   );
 }

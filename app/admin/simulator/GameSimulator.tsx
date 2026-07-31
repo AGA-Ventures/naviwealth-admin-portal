@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 type DatasetKind = "event" | "stock";
 type DatasetStatus = "draft" | "ready" | "archived";
@@ -46,10 +48,7 @@ type SimulationResult = {
 };
 
 type GameSimulatorProps = {
-  user: {
-    name: string;
-    email: string;
-  };
+  user: AdminSessionUser;
 };
 
 const riskLabels: Record<RiskProfile, string> = {
@@ -257,7 +256,7 @@ export function GameSimulator({ user }: GameSimulatorProps) {
   return (
     <div className="admin-app simulator-page">
       <aside className="admin-sidebar">
-        <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
+        <Link className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
             <span>N</span>
           </span>
@@ -265,37 +264,41 @@ export function GameSimulator({ user }: GameSimulatorProps) {
             NaviWealth
             <small>ADMIN PORTAL</small>
           </span>
-        </a>
+        </Link>
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a href="/admin">
+          <Link href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
-          </a>
-          <a className="active simulator-nav-link" href="/admin/simulator">
+          </Link>
+          <Link className="active simulator-nav-link" href="/admin/simulator">
             <span className="nav-glyph">▶</span>
             Simulator
-          </a>
-          <a href="/admin/stocks">
+          </Link>
+          <Link href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
             <em>{datasets.filter((dataset) => dataset.kind === "stock").length}</em>
-          </a>
-          <a href="/admin/events">
+          </Link>
+          <Link href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
             <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
-          </a>
+          </Link>
           <p>GAME SYSTEM</p>
-          <a href="/admin/users">
-            <span className="nav-glyph">◎</span>
-            User control
-          </a>
-          <a href="/admin/game-settings">
-            <span className="nav-glyph">⚙</span>
-            Game settings
-          </a>
+          {user.permissions.includes("users.manage") ? (
+            <Link href="/admin/users">
+              <span className="nav-glyph">◎</span>
+              User control
+            </Link>
+          ) : null}
+          {user.permissions.includes("settings.edit") ? (
+            <Link href="/admin/game-settings">
+              <span className="nav-glyph">⚙</span>
+              Game settings
+            </Link>
+          ) : null}
         </nav>
 
         <div className="simulator-side-note">
@@ -314,7 +317,7 @@ export function GameSimulator({ user }: GameSimulatorProps) {
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+          <a href="/api/auth/logout" aria-label="Sign out">
             ↗
           </a>
         </div>
@@ -348,7 +351,7 @@ export function GameSimulator({ user }: GameSimulatorProps) {
           <section className="admin-heading simulator-heading">
             <div>
               <div className="stock-breadcrumb">
-                <a href="/admin">Dataset control</a>
+                <Link href="/admin">Dataset control</Link>
                 <span>/</span>
                 <strong>Simulator</strong>
               </div>

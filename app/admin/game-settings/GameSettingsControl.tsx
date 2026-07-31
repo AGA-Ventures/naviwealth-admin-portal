@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { AdminSessionUser } from "@/app/admin-access";
 import { AdminControlSidebar } from "../AdminControlSidebar";
 
 type GameSettings = {
@@ -18,10 +19,7 @@ type GameSettings = {
 };
 
 type GameSettingsControlProps = {
-  currentUser: {
-    name: string;
-    email: string;
-  };
+  currentUser: AdminSessionUser;
 };
 
 const fallbackSettings: GameSettings = {

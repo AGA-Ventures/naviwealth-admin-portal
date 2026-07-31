@@ -7,6 +7,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 type DatasetKind = "event" | "stock";
 type DatasetStatus = "draft" | "ready" | "archived";
@@ -40,10 +42,7 @@ type ModalState =
   | null;
 
 type AdminPortalProps = {
-  user: {
-    name: string;
-    email: string;
-  };
+  user: AdminSessionUser;
 };
 
 const filters = [
@@ -62,6 +61,8 @@ export function AdminPortal({ user }: AdminPortalProps) {
   const [modal, setModal] = useState<ModalState>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+  const canEdit = user.permissions.includes("datasets.edit");
+  const canReuse = user.permissions.includes("datasets.reuse");
 
   const loadDatasets = useCallback(async () => {
     try {
@@ -84,6 +85,8 @@ export function AdminPortal({ user }: AdminPortalProps) {
   }, []);
 
   useEffect(() => {
+    // Fetching is the external synchronization performed by this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDatasets();
   }, [loadDatasets]);
 
@@ -192,7 +195,7 @@ export function AdminPortal({ user }: AdminPortalProps) {
   return (
     <div className="admin-app">
       <aside className="admin-sidebar">
-        <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
+        <Link className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
             <span>N</span>
           </span>
@@ -200,37 +203,41 @@ export function AdminPortal({ user }: AdminPortalProps) {
             NaviWealth
             <small>ADMIN PORTAL</small>
           </span>
-        </a>
+        </Link>
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a className="active" href="/admin">
+          <Link className="active" href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
-          </a>
-          <a href="/admin/simulator">
+          </Link>
+          <Link href="/admin/simulator">
             <span className="nav-glyph">▶</span>
             Simulator
-          </a>
-          <a href="/admin/stocks">
+          </Link>
+          <Link href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
             <em>{datasets.filter((dataset) => dataset.kind === "stock").length}</em>
-          </a>
-          <a href="/admin/events">
+          </Link>
+          <Link href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
             <em>{datasets.filter((dataset) => dataset.kind === "event").length}</em>
-          </a>
+          </Link>
           <p>GAME SYSTEM</p>
-          <a href="/admin/users">
-            <span className="nav-glyph">◎</span>
-            User control
-          </a>
-          <a href="/admin/game-settings">
-            <span className="nav-glyph">⚙</span>
-            Game settings
-          </a>
+          {user.permissions.includes("users.manage") ? (
+            <Link href="/admin/users">
+              <span className="nav-glyph">◎</span>
+              User control
+            </Link>
+          ) : null}
+          {user.permissions.includes("settings.edit") ? (
+            <Link href="/admin/game-settings">
+              <span className="nav-glyph">⚙</span>
+              Game settings
+            </Link>
+          ) : null}
         </nav>
 
         <div className="sidebar-capacity">
@@ -252,7 +259,7 @@ export function AdminPortal({ user }: AdminPortalProps) {
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+          <a href="/api/auth/logout" aria-label="Sign out">
             ↗
           </a>
         </div>
@@ -292,20 +299,24 @@ export function AdminPortal({ user }: AdminPortalProps) {
                 one source of truth.
               </p>
             </div>
-            <button
-              className="admin-primary"
-              type="button"
-              onClick={() => setModal({ mode: "create", dataset: null })}
-              disabled={atCapacity}
-              title={
-                atCapacity
-                  ? `The ${limit}-dataset capacity has been reached`
-                  : undefined
-              }
-            >
-              <span aria-hidden="true">＋</span>
-              Create dataset
-            </button>
+            {canEdit ? (
+              <button
+                className="admin-primary"
+                type="button"
+                onClick={() => setModal({ mode: "create", dataset: null })}
+                disabled={atCapacity}
+                title={
+                  atCapacity
+                    ? `The ${limit}-dataset capacity has been reached`
+                    : undefined
+                }
+              >
+                <span aria-hidden="true">＋</span>
+                Create dataset
+              </button>
+            ) : (
+              <span className="access-mode-badge">READ-ONLY ACCESS</span>
+            )}
           </section>
 
           <section className="metric-grid" aria-label="Dataset summary">
@@ -414,6 +425,8 @@ export function AdminPortal({ user }: AdminPortalProps) {
                           key={dataset.id}
                           dataset={dataset}
                           busy={busy}
+                          canEdit={canEdit}
+                          canReuse={canReuse}
                           onEdit={() =>
                             setModal({ mode: "edit", dataset })
                           }
@@ -553,6 +566,8 @@ function MetricCard({
 function DatasetRow({
   dataset,
   busy,
+  canEdit,
+  canReuse,
   onEdit,
   onDuplicate,
   onReuse,
@@ -560,6 +575,8 @@ function DatasetRow({
 }: {
   dataset: Dataset;
   busy: string | null;
+  canEdit: boolean;
+  canReuse: boolean;
   onEdit: () => void;
   onDuplicate: () => void;
   onReuse: () => void;
@@ -568,7 +585,12 @@ function DatasetRow({
   return (
     <tr>
       <td data-label="Dataset">
-        <button className="dataset-name-cell" type="button" onClick={onEdit}>
+        <button
+          className="dataset-name-cell"
+          type="button"
+          onClick={onEdit}
+          disabled={!canEdit}
+        >
           <span className={`dataset-kind-icon ${dataset.kind}`}>
             {dataset.kind === "event" ? "EV" : "ST"}
           </span>
@@ -599,38 +621,42 @@ function DatasetRow({
         <time className="updated-date">{relativeDate(dataset.updatedAt)}</time>
       </td>
       <td data-label="Actions">
-        <details className="row-menu">
+        {canEdit || canReuse ? <details className="row-menu">
           <summary aria-label={`Actions for ${dataset.name}`}>•••</summary>
           <div>
-            <button type="button" onClick={onEdit}>
-              Edit package
-            </button>
-            <button
-              type="button"
-              onClick={onReuse}
-              disabled={busy === `reuse-${dataset.id}`}
-            >
-              {busy === `reuse-${dataset.id}` ? "Preparing…" : "Use in game"}
-            </button>
-            <button
-              type="button"
-              onClick={onDuplicate}
-              disabled={busy === `duplicate-${dataset.id}`}
-            >
-              {busy === `duplicate-${dataset.id}`
-                ? "Duplicating…"
-                : "Duplicate & reuse"}
-            </button>
-            <button
-              className="danger"
-              type="button"
-              onClick={onDelete}
-              disabled={busy === `delete-${dataset.id}`}
-            >
-              Delete dataset
-            </button>
+            {canEdit ? <button type="button" onClick={onEdit}>Edit package</button> : null}
+            {canReuse ? (
+              <button
+                type="button"
+                onClick={onReuse}
+                disabled={busy === `reuse-${dataset.id}`}
+              >
+                {busy === `reuse-${dataset.id}` ? "Preparing…" : "Use in game"}
+              </button>
+            ) : null}
+            {canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onDuplicate}
+                  disabled={busy === `duplicate-${dataset.id}`}
+                >
+                  {busy === `duplicate-${dataset.id}`
+                    ? "Duplicating…"
+                    : "Duplicate & reuse"}
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  onClick={onDelete}
+                  disabled={busy === `delete-${dataset.id}`}
+                >
+                  Delete dataset
+                </button>
+              </>
+            ) : null}
           </div>
-        </details>
+        </details> : <span className="read-only-row">VIEW</span>}
       </td>
     </tr>
   );

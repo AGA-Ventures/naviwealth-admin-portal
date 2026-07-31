@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { requireAdminSession } from "@/app/admin-session";
 import { GameSettingsControl } from "./GameSettingsControl";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +11,12 @@ export const metadata: Metadata = {
 };
 
 export default async function GameSettingsPage() {
-  const user = await getChatGPTUser();
+  const user = await requireAdminSession(
+    "/admin/game-settings",
+    "settings.edit",
+  );
 
   return (
-    <GameSettingsControl
-      currentUser={{
-        name: user?.displayName ?? "NaviWealth Admin",
-        email: user?.email ?? "Local preview",
-      }}
-    />
+    <GameSettingsControl currentUser={user} />
   );
 }

@@ -4,6 +4,8 @@ import {
 } from "@/db/admin-controls";
 import {
   getDatasetRequestUser,
+  forbiddenResponse,
+  hasRequestPermission,
   unauthorizedResponse,
 } from "../../datasets/auth";
 
@@ -14,6 +16,9 @@ type RouteContext = {
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "users.manage")) {
+    return forbiddenResponse("Superadmin access is required.");
+  }
 
   try {
     const { id: rawId } = await context.params;
@@ -24,7 +29,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const payload = await request.json();
     return Response.json({
-      user: await updateAdminUser(id, payload),
+      user: await updateAdminUser(id, payload, user),
     });
   } catch (error) {
     if (error instanceof AdminControlError) {

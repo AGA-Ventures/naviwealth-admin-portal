@@ -1,11 +1,9 @@
 import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 
 type AdminControlSidebarProps = {
   active: "users" | "settings";
-  user: {
-    name: string;
-    email: string;
-  };
+  user: AdminSessionUser;
   footer: {
     eyebrow: string;
     title: string;
@@ -50,20 +48,24 @@ export function AdminControlSidebar({
           Event datasets
         </Link>
         <p>GAME SYSTEM</p>
-        <Link
-          className={active === "users" ? "active" : ""}
-          href="/admin/users"
-        >
-          <span className="nav-glyph">◎</span>
-          User control
-        </Link>
-        <Link
-          className={active === "settings" ? "active" : ""}
-          href="/admin/game-settings"
-        >
-          <span className="nav-glyph">⚙</span>
-          Game settings
-        </Link>
+        {user.permissions.includes("users.manage") ? (
+          <Link
+            className={active === "users" ? "active" : ""}
+            href="/admin/users"
+          >
+            <span className="nav-glyph">◎</span>
+            User control
+          </Link>
+        ) : null}
+        {user.permissions.includes("settings.edit") ? (
+          <Link
+            className={active === "settings" ? "active" : ""}
+            href="/admin/game-settings"
+          >
+            <span className="nav-glyph">⚙</span>
+            Game settings
+          </Link>
+        ) : null}
       </nav>
 
       <div className="control-sidebar-card">
@@ -82,7 +84,7 @@ export function AdminControlSidebar({
           <strong>{user.name}</strong>
           <small>{user.email}</small>
         </span>
-        <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+        <a href="/api/auth/logout" aria-label="Sign out">
           ↗
         </a>
       </div>

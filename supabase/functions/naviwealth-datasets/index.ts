@@ -23,13 +23,14 @@ type DatasetInput = {
   localizationState?: unknown;
 };
 
-type AdminUserRole = "owner" | "admin" | "facilitator" | "viewer";
+type AdminUserRole = "superadmin" | "admin" | "facilitator" | "viewer";
 type AdminUserStatus = "active" | "invited" | "suspended";
 type AdminUserInput = {
   name?: unknown;
   email?: unknown;
   role?: unknown;
   status?: unknown;
+  password?: unknown;
 };
 type GameSettingsInput = {
   defaultPlayers?: unknown;
@@ -71,6 +72,7 @@ type DatasetRow = {
 
 type AdminUserRow = {
   id: number;
+  auth_user_id: string | null;
   name: string;
   email: string;
   role: AdminUserRole;
@@ -78,6 +80,32 @@ type AdminUserRow = {
   last_active_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type AdminActor = {
+  id: number;
+  authUserId: string;
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  status: AdminUserStatus;
+};
+
+type AdminAuditLogRow = {
+  id: number;
+  actor_admin_user_id: number | null;
+  actor_auth_user_id: string | null;
+  actor_name: string;
+  actor_email: string;
+  actor_role: AdminUserRole;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  summary: string;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 };
 
 type GameSettingsRow = {
@@ -123,6 +151,11 @@ type EventRecordRow = {
 type RequestBody = {
   operation?: unknown;
   id?: unknown;
+  actorUserId?: unknown;
+  accessToken?: unknown;
+  refreshToken?: unknown;
+  email?: unknown;
+  password?: unknown;
   input?:
     | DatasetInput
     | AdminUserInput
@@ -153,127 +186,239 @@ Deno.serve(async (request) => {
     const body = (await request.json()) as RequestBody;
     const client = createAdminClient();
 
-    switch (body.operation) {
+    const operation = operationName(body.operation);
+    if (operation === "loginAdmin") {
+      return json({
+        session: await loginAdmin(client, body.email, body.password),
+      });
+    }
+    if (operation === "refreshAdminSession") {
+      return json({
+        session: await refreshAdminSession(client, body.refreshToken),
+      });
+    }
+    if (operation === "getAdminSession") {
+      return json({
+        user: await getAdminSession(client, body.accessToken),
+      });
+    }
+
+    const actor = await requireAdminActor(client, body.actorUserId);
+    assertOperationPermission(actor, operation);
+
+    switch (operation) {
       case "list":
         return json({ datasets: await listDatasets(client) });
       case "get":
         return json({
           dataset: mapDataset(await findDataset(client, id(body.id))),
         });
-      case "create":
-        return json(
-          {
-            dataset: mapDataset(
-              await createDataset(
-                client,
-                (body.input ?? {}) as DatasetInput,
-              ),
-            ),
-          },
-          201,
+      case "create": {
+        const dataset = mapDataset(
+          await createDataset(client, (body.input ?? {}) as DatasetInput),
         );
-      case "update":
-        return json({
-          dataset: mapDataset(
-            await updateDataset(
-              client,
-              id(body.id),
-              (body.input ?? {}) as DatasetInput,
+        await writeAudit(client, actor, {
+          action: "dataset.create",
+          resourceType: "dataset",
+          resourceId: String(dataset.id),
+          summary: `Created ${dataset.kind} dataset “${dataset.name}”.`,
+          afterData: dataset,
+        });
+        return json({ dataset }, 201);
+      }
+      case "update": {
+        const datasetId = id(body.id);
+        const before = mapDataset(await findDataset(client, datasetId));
+        const dataset = mapDataset(
+          await updateDataset(
+            client,
+            datasetId,
+            (body.input ?? {}) as DatasetInput,
+          ),
+        );
+        await writeAudit(client, actor, {
+          action: "dataset.update",
+          resourceType: "dataset",
+          resourceId: String(dataset.id),
+          summary: `Updated dataset “${dataset.name}”.`,
+          beforeData: before,
+          afterData: dataset,
+        });
+        return json({ dataset });
+      }
+      case "delete": {
+        const datasetId = id(body.id);
+        const before = mapDataset(await findDataset(client, datasetId));
+        await deleteDataset(client, datasetId);
+        await writeAudit(client, actor, {
+          action: "dataset.delete",
+          resourceType: "dataset",
+          resourceId: String(datasetId),
+          summary: `Deleted dataset “${before.name}”.`,
+          beforeData: before,
+        });
+        return json({ deleted: true });
+      }
+      case "duplicate": {
+        const sourceId = id(body.id);
+        const dataset = mapDataset(await duplicateDataset(client, sourceId));
+        await writeAudit(client, actor, {
+          action: "dataset.duplicate",
+          resourceType: "dataset",
+          resourceId: String(dataset.id),
+          summary: `Duplicated dataset #${sourceId} as “${dataset.name}”.`,
+          afterData: dataset,
+          metadata: { sourceDatasetId: sourceId },
+        });
+        return json({ dataset }, 201);
+      }
+      case "reuse": {
+        const datasetId = id(body.id);
+        const before = mapDataset(await findDataset(client, datasetId));
+        const dataset = mapDataset(await reuseDataset(client, datasetId));
+        await writeAudit(client, actor, {
+          action: "dataset.reuse",
+          resourceType: "dataset",
+          resourceId: String(dataset.id),
+          summary: `Prepared dataset “${dataset.name}” for reuse.`,
+          beforeData: before,
+          afterData: dataset,
+        });
+        return json({ dataset });
+      }
+      case "createCountryVariant": {
+        const sourceId = id(body.id);
+        const dataset = mapDataset(
+          await createCountryVariant(
+            client,
+            sourceId,
+            parseCountryCode(
+              ((body.input ?? {}) as DatasetInput).countryCode,
             ),
           ),
-        });
-      case "delete":
-        await deleteDataset(client, id(body.id));
-        return json({ deleted: true });
-      case "duplicate":
-        return json(
-          {
-            dataset: mapDataset(
-              await duplicateDataset(client, id(body.id)),
-            ),
-          },
-          201,
         );
-      case "reuse":
-        return json({
-          dataset: mapDataset(await reuseDataset(client, id(body.id))),
+        await writeAudit(client, actor, {
+          action: "dataset.country_variant.create",
+          resourceType: "dataset",
+          resourceId: String(dataset.id),
+          summary: `Created ${dataset.countryCode} variant “${dataset.name}”.`,
+          afterData: dataset,
+          metadata: { sourceDatasetId: sourceId },
         });
-      case "createCountryVariant":
-        return json(
-          {
-            dataset: mapDataset(
-              await createCountryVariant(
-                client,
-                id(body.id),
-                parseCountryCode(
-                  ((body.input ?? {}) as DatasetInput).countryCode,
-                ),
-              ),
-            ),
-          },
-          201,
-        );
+        return json({ dataset }, 201);
+      }
       case "listAdminUsers":
         return json({ users: await listAdminUsers(client) });
-      case "createAdminUser":
-        return json(
-          {
-            user: mapAdminUser(
-              await createAdminUser(
-                client,
-                (body.input ?? {}) as AdminUserInput,
-              ),
-            ),
-          },
-          201,
-        );
-      case "updateAdminUser":
-        return json({
-          user: mapAdminUser(
-            await updateAdminUser(
-              client,
-              id(body.id),
-              (body.input ?? {}) as AdminUserInput,
-            ),
+      case "createAdminUser": {
+        const user = mapAdminUser(
+          await createAdminUser(
+            client,
+            (body.input ?? {}) as AdminUserInput,
           ),
+        );
+        await writeAudit(client, actor, {
+          action: "admin_user.create",
+          resourceType: "admin_user",
+          resourceId: String(user.id),
+          summary: `Created ${user.role} account for ${user.email}.`,
+          afterData: user,
         });
+        return json({ user }, 201);
+      }
+      case "updateAdminUser": {
+        const userId = id(body.id);
+        const before = mapAdminUser(await findAdminUser(client, userId));
+        const user = mapAdminUser(
+          await updateAdminUser(
+            client,
+            actor,
+            userId,
+            (body.input ?? {}) as AdminUserInput,
+          ),
+        );
+        await writeAudit(client, actor, {
+          action: "admin_user.update",
+          resourceType: "admin_user",
+          resourceId: String(user.id),
+          summary: `Updated access for ${user.email}.`,
+          beforeData: before,
+          afterData: user,
+        });
+        return json({ user });
+      }
+      case "listAuditLogs":
+        return json({ logs: await listAuditLogs(client) });
       case "getGameSettings":
         return json({
           settings: mapGameSettings(await getGameSettings(client)),
         });
-      case "updateGameSettings":
-        return json({
-          settings: mapGameSettings(
-            await updateGameSettings(
-              client,
-              (body.input ?? {}) as GameSettingsInput,
-            ),
-          ),
+      case "updateGameSettings": {
+        const before = mapGameSettings(await getGameSettings(client));
+        const settings = mapGameSettings(
+          await updateGameSettings(client, {
+            ...((body.input ?? {}) as GameSettingsInput),
+            updatedBy: actor.email,
+          }),
+        );
+        await writeAudit(client, actor, {
+          action: "game_settings.update",
+          resourceType: "game_settings",
+          resourceId: "1",
+          summary: "Updated shared game settings.",
+          beforeData: before,
+          afterData: settings,
         });
+        return json({ settings });
+      }
       case "getStockPriceSeries":
         return json({
           series: await getStockPriceSeries(client, stockId(body.id)),
         });
-      case "updateStockPrices":
-        return json({
-          series: await updateStockPrices(
-            client,
-            stockId(body.id),
-            (body.input ?? {}) as StockPriceUpdateInput,
-          ),
+      case "updateStockPrices": {
+        const instrumentId = stockId(body.id);
+        const input = (body.input ?? {}) as StockPriceUpdateInput;
+        const series = await updateStockPrices(client, instrumentId, input);
+        await writeAudit(client, actor, {
+          action: "stock_prices.update",
+          resourceType: "stock_instrument",
+          resourceId: String(instrumentId),
+          summary: `Updated ${Array.isArray(input.updates) ? input.updates.length : 0} price points for ${series.symbol}.`,
+          metadata: {
+            updatedPeriods: Array.isArray(input.updates)
+              ? input.updates
+                  .slice(0, 360)
+                  .map((update) =>
+                    typeof update === "object" && update
+                      ? Number((update as { period?: unknown }).period)
+                      : null,
+                  )
+                  .filter((period) => Number.isInteger(period))
+              : [],
+          },
         });
+        return json({ series });
+      }
       case "listEventRecords":
         return json({
           records: await listEventRecords(client, id(body.id)),
         });
-      case "updateEventRecord":
-        return json({
-          record: await updateEventRecord(
-            client,
-            eventRecordId(body.id),
-            (body.input ?? {}) as EventRecordInput,
-          ),
+      case "updateEventRecord": {
+        const result = await updateEventRecord(
+          client,
+          eventRecordId(body.id),
+          (body.input ?? {}) as EventRecordInput,
+        );
+        await writeAudit(client, actor, {
+          action: "event_record.update",
+          resourceType: "event_record",
+          resourceId: String(result.record.id),
+          summary: `Updated event row ${result.record.rowNumber}.`,
+          beforeData: result.beforeData,
+          afterData: result.afterData,
+          metadata: { datasetId: result.record.datasetId },
         });
+        return json({ record: result.record });
+      }
       default:
         throw new GatewayError("Unsupported gateway operation.", 400);
     }
@@ -299,6 +444,227 @@ function createAdminClient() {
   return createClient(supabaseUrl, secretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+async function loginAdmin(
+  client: SupabaseClient,
+  emailValue: unknown,
+  passwordValue: unknown,
+) {
+  const email = cleanEmail(emailValue);
+  const password = cleanPassword(passwordValue);
+  const candidate = await findAdminUserByEmail(client, email);
+  if (!candidate || candidate.status !== "active") {
+    throw new GatewayError("Invalid email or password.", 401);
+  }
+
+  const { data, error } = await client.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error || !data.user || !data.session) {
+    throw new GatewayError("Invalid email or password.", 401);
+  }
+
+  let row = candidate;
+  if (!row.auth_user_id) {
+    const { data: linked, error: linkError } = await client
+      .from("admin_users")
+      .update({ auth_user_id: data.user.id })
+      .eq("id", row.id)
+      .is("auth_user_id", null)
+      .select("*")
+      .single();
+    if (linkError) throw databaseError(linkError);
+    row = linked as AdminUserRow;
+  }
+  if (row.auth_user_id !== data.user.id) {
+    throw new GatewayError("Invalid email or password.", 401);
+  }
+
+  row = await markAdminActive(client, row.id);
+  return mapAuthSession(data.session, row);
+}
+
+async function refreshAdminSession(
+  client: SupabaseClient,
+  refreshTokenValue: unknown,
+) {
+  const refreshToken = requiredToken(refreshTokenValue, "refresh");
+  const { data, error } = await client.auth.refreshSession({
+    refresh_token: refreshToken,
+  });
+  if (error || !data.user || !data.session) {
+    throw new GatewayError("Your session has expired. Sign in again.", 401);
+  }
+  const row = await findActiveAdminByAuthId(client, data.user.id);
+  return mapAuthSession(data.session, row);
+}
+
+async function getAdminSession(
+  client: SupabaseClient,
+  accessTokenValue: unknown,
+) {
+  const accessToken = requiredToken(accessTokenValue, "access");
+  const { data, error } = await client.auth.getUser(accessToken);
+  if (error || !data.user) {
+    throw new GatewayError("Sign in is required.", 401);
+  }
+  return mapAdminSessionUser(
+    await findActiveAdminByAuthId(client, data.user.id),
+  );
+}
+
+async function findAdminUserByEmail(
+  client: SupabaseClient,
+  email: string,
+) {
+  const { data, error } = await client
+    .from("admin_users")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  return data ? (data as AdminUserRow) : null;
+}
+
+async function findActiveAdminByAuthId(
+  client: SupabaseClient,
+  authUserId: string,
+) {
+  const { data, error } = await client
+    .from("admin_users")
+    .select("*")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!data || data.status !== "active") {
+    throw new GatewayError("This administrator account is not active.", 403);
+  }
+  return data as AdminUserRow;
+}
+
+async function markAdminActive(client: SupabaseClient, userId: number) {
+  const { data, error } = await client
+    .from("admin_users")
+    .update({ last_active_at: new Date().toISOString() })
+    .eq("id", userId)
+    .select("*")
+    .single();
+  if (error) throw databaseError(error);
+  return data as AdminUserRow;
+}
+
+async function requireAdminActor(
+  client: SupabaseClient,
+  authUserIdValue: unknown,
+): Promise<AdminActor> {
+  const authUserId = cleanUuid(authUserIdValue);
+  const row = await findActiveAdminByAuthId(client, authUserId);
+  return {
+    id: row.id,
+    authUserId,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+  };
+}
+
+function assertOperationPermission(actor: AdminActor, operation: string) {
+  const superadminOnly = new Set([
+    "listAdminUsers",
+    "createAdminUser",
+    "updateAdminUser",
+    "listAuditLogs",
+  ]);
+  const adminWrite = new Set([
+    "create",
+    "update",
+    "delete",
+    "duplicate",
+    "createCountryVariant",
+    "updateGameSettings",
+    "updateStockPrices",
+    "updateEventRecord",
+  ]);
+  const facilitatorWrite = new Set(["reuse"]);
+
+  if (superadminOnly.has(operation) && actor.role !== "superadmin") {
+    throw new GatewayError("Superadmin access is required.", 403);
+  }
+  if (
+    adminWrite.has(operation) &&
+    actor.role !== "superadmin" &&
+    actor.role !== "admin"
+  ) {
+    throw new GatewayError("Administrator edit access is required.", 403);
+  }
+  if (
+    facilitatorWrite.has(operation) &&
+    actor.role !== "superadmin" &&
+    actor.role !== "admin" &&
+    actor.role !== "facilitator"
+  ) {
+    throw new GatewayError("Facilitator access is required.", 403);
+  }
+}
+
+function mapAuthSession(
+  session: {
+    access_token: string;
+    refresh_token: string;
+    expires_at?: number;
+    expires_in: number;
+  },
+  row: AdminUserRow,
+) {
+  return {
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresAt:
+      session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
+    user: mapAdminSessionUser(row),
+  };
+}
+
+function mapAdminSessionUser(row: AdminUserRow) {
+  return {
+    id: row.id,
+    authUserId: row.auth_user_id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    permissions: permissionsForRole(row.role),
+  };
+}
+
+function permissionsForRole(role: AdminUserRole) {
+  if (role === "superadmin") {
+    return [
+      "portal.view",
+      "simulation.run",
+      "datasets.reuse",
+      "datasets.edit",
+      "settings.edit",
+      "users.manage",
+      "audit.view",
+    ];
+  }
+  if (role === "admin") {
+    return [
+      "portal.view",
+      "simulation.run",
+      "datasets.reuse",
+      "datasets.edit",
+      "settings.edit",
+    ];
+  }
+  if (role === "facilitator") {
+    return ["portal.view", "simulation.run", "datasets.reuse"];
+  }
+  return ["portal.view"];
 }
 
 async function listDatasets(client: SupabaseClient) {
@@ -523,26 +889,105 @@ async function createAdminUser(
   client: SupabaseClient,
   input: AdminUserInput,
 ) {
-  const { data, error } = await client
-    .from("admin_users")
-    .insert({
-      name: cleanAdminUserName(input.name),
-      email: cleanEmail(input.email),
-      role: parseAdminUserRole(input.role ?? "facilitator"),
-      status: parseAdminUserStatus(input.status ?? "invited"),
-    })
-    .select("*")
-    .single();
-  if (error) throw databaseError(error);
+  const name = cleanAdminUserName(input.name);
+  const email = cleanEmail(input.email);
+  const password = cleanPassword(input.password);
+  const role = parseAdminUserRole(input.role ?? "facilitator");
+  const existing = await findAdminUserByEmail(client, email);
+  if (existing?.auth_user_id) {
+    throw new GatewayError("This administrator already has a login.", 409);
+  }
+
+  const { data: authData, error: authError } =
+    await client.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: name },
+    });
+  if (authError || !authData.user) {
+    throw new GatewayError(
+      authError?.message ?? "The administrator login could not be created.",
+      authError?.status ?? 500,
+    );
+  }
+
+  const save = existing
+    ? client
+        .from("admin_users")
+        .update({
+          auth_user_id: authData.user.id,
+          name,
+          role,
+          status: "active",
+        })
+        .eq("id", existing.id)
+    : client.from("admin_users").insert({
+        auth_user_id: authData.user.id,
+        name,
+        email,
+        role,
+        status: "active",
+      });
+  const { data, error } = await save.select("*").single();
+  if (error) {
+    await client.auth.admin.deleteUser(authData.user.id).catch(() => undefined);
+    throw databaseError(error);
+  }
   return data as AdminUserRow;
 }
 
 async function updateAdminUser(
   client: SupabaseClient,
+  actor: AdminActor,
   userId: number,
   input: AdminUserInput,
 ) {
   const current = await findAdminUser(client, userId);
+  const nextRole =
+    input.role === undefined
+      ? current.role
+      : parseAdminUserRole(input.role);
+  const nextStatus =
+    input.status === undefined
+      ? current.status
+      : parseAdminUserStatus(input.status);
+  if (
+    current.id === actor.id &&
+    (nextRole !== "superadmin" || nextStatus !== "active")
+  ) {
+    throw new GatewayError(
+      "You cannot remove your own superadmin access.",
+      409,
+    );
+  }
+  if (
+    current.role === "superadmin" &&
+    current.status === "active" &&
+    (nextRole !== "superadmin" || nextStatus !== "active")
+  ) {
+    const { count, error: countError } = await client
+      .from("admin_users")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "superadmin")
+      .eq("status", "active");
+    if (countError) throw databaseError(countError);
+    if ((count ?? 0) <= 1) {
+      throw new GatewayError(
+        "Keep at least one active superadmin account.",
+        409,
+      );
+    }
+  }
+  if (
+    input.email !== undefined &&
+    cleanEmail(input.email) !== current.email
+  ) {
+    throw new GatewayError(
+      "Change login emails from Supabase Auth before updating this directory.",
+      409,
+    );
+  }
   const { data, error } = await client
     .from("admin_users")
     .update({
@@ -552,20 +997,62 @@ async function updateAdminUser(
           : cleanAdminUserName(input.name),
       email:
         input.email === undefined ? current.email : cleanEmail(input.email),
-      role:
-        input.role === undefined
-          ? current.role
-          : parseAdminUserRole(input.role),
-      status:
-        input.status === undefined
-          ? current.status
-          : parseAdminUserStatus(input.status),
+      role: nextRole,
+      status: nextStatus,
     })
     .eq("id", userId)
     .select("*")
     .single();
   if (error) throw databaseError(error);
   return data as AdminUserRow;
+}
+
+async function listAuditLogs(client: SupabaseClient) {
+  const { data, error } = await client
+    .from("admin_audit_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw databaseError(error);
+  return ((data ?? []) as AdminAuditLogRow[]).map(mapAuditLog);
+}
+
+type AuditInput = {
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  summary: string;
+  beforeData?: Record<string, unknown> | null;
+  afterData?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+};
+
+async function writeAudit(
+  client: SupabaseClient,
+  actor: AdminActor,
+  input: AuditInput,
+) {
+  const { error } = await client.from("admin_audit_logs").insert({
+    actor_admin_user_id: actor.id,
+    actor_auth_user_id: actor.authUserId,
+    actor_name: actor.name,
+    actor_email: actor.email,
+    actor_role: actor.role,
+    action: input.action,
+    resource_type: input.resourceType,
+    resource_id: input.resourceId ?? null,
+    summary: input.summary,
+    before_data: input.beforeData ?? null,
+    after_data: input.afterData ?? null,
+    metadata: input.metadata ?? {},
+  });
+  if (error) {
+    console.error("Audit log insert failed", error);
+    throw new GatewayError(
+      "The change was saved, but its audit entry could not be recorded.",
+      500,
+    );
+  }
 }
 
 async function getGameSettings(client: SupabaseClient) {
@@ -745,7 +1232,19 @@ async function updateEventRecord(
     .select("*")
     .single();
   if (error) throw databaseError(error);
-  return mapEventRecord(data as EventRecordRow);
+  const beforeData: Record<string, string> = {};
+  const afterData: Record<string, string> = {};
+  for (const key of Object.keys(eventData)) {
+    if (current.data[key] !== eventData[key]) {
+      beforeData[key] = current.data[key] ?? "";
+      afterData[key] = eventData[key];
+    }
+  }
+  return {
+    record: mapEventRecord(data as EventRecordRow),
+    beforeData,
+    afterData,
+  };
 }
 
 function mapDataset(row: DatasetRow) {
@@ -784,6 +1283,7 @@ function mapEventRecord(row: EventRecordRow) {
 function mapAdminUser(row: AdminUserRow) {
   return {
     id: row.id,
+    authUserId: row.auth_user_id,
     name: row.name,
     email: row.email,
     role: row.role,
@@ -791,6 +1291,25 @@ function mapAdminUser(row: AdminUserRow) {
     lastActiveAt: row.last_active_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapAuditLog(row: AdminAuditLogRow) {
+  return {
+    id: row.id,
+    actorAdminUserId: row.actor_admin_user_id,
+    actorAuthUserId: row.actor_auth_user_id,
+    actorName: row.actor_name,
+    actorEmail: row.actor_email,
+    actorRole: row.actor_role,
+    action: row.action,
+    resourceType: row.resource_type,
+    resourceId: row.resource_id,
+    summary: row.summary,
+    beforeData: row.before_data,
+    afterData: row.after_data,
+    metadata: row.metadata,
+    createdAt: row.created_at,
   };
 }
 
@@ -955,7 +1474,7 @@ function cleanEmail(value: unknown) {
 
 function parseAdminUserRole(value: unknown): AdminUserRole {
   if (
-    value === "owner" ||
+    value === "superadmin" ||
     value === "admin" ||
     value === "facilitator" ||
     value === "viewer"
@@ -963,6 +1482,45 @@ function parseAdminUserRole(value: unknown): AdminUserRole {
     return value;
   }
   throw new GatewayError("Select a valid user role.", 400);
+}
+
+function cleanPassword(value: unknown) {
+  const password = typeof value === "string" ? value : "";
+  if (password.length < 12 || password.length > 128) {
+    throw new GatewayError(
+      "Passwords must contain between 12 and 128 characters.",
+      400,
+    );
+  }
+  return password;
+}
+
+function requiredToken(value: unknown, label: string) {
+  const token = typeof value === "string" ? value.trim() : "";
+  if (!token || token.length > 10_000) {
+    throw new GatewayError(`A valid ${label} token is required.`, 401);
+  }
+  return token;
+}
+
+function cleanUuid(value: unknown) {
+  const uuid = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      uuid,
+    )
+  ) {
+    throw new GatewayError("A valid administrator identity is required.", 401);
+  }
+  return uuid;
+}
+
+function operationName(value: unknown) {
+  const operation = typeof value === "string" ? value.trim() : "";
+  if (!operation || operation.length > 80) {
+    throw new GatewayError("A valid gateway operation is required.", 400);
+  }
+  return operation;
 }
 
 function parseAdminUserStatus(value: unknown): AdminUserStatus {

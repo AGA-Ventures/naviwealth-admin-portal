@@ -9,11 +9,43 @@ export default function Home() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Opening the dataset control center…");
-    router.push("/admin");
+    setSubmitting(true);
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const returnTo = new URLSearchParams(window.location.search).get(
+        "return_to",
+      );
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.get("email"),
+          password: form.get("password"),
+          returnTo,
+        }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        returnTo?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to sign in.");
+      }
+      setMessage("Access verified. Opening the control center…");
+      router.replace(payload.returnTo ?? "/admin");
+      router.refresh();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to sign in.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -144,7 +176,7 @@ export default function Home() {
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     placeholder="Enter your password"
-                    minLength={8}
+                    minLength={12}
                     required
                   />
                   <button
@@ -164,11 +196,15 @@ export default function Home() {
                   <input type="checkbox" name="remember" />
                   <span>Remember me</span>
                 </label>
-                <a href="#forgot-password">Forgot password?</a>
+                <span>Contact a superadmin for access</span>
               </div>
 
-              <button className="submit-button" type="submit">
-                <span>Open admin portal</span>
+              <button
+                className="submit-button"
+                type="submit"
+                disabled={submitting}
+              >
+                <span>{submitting ? "Verifying access…" : "Open admin portal"}</span>
                 <span aria-hidden="true">→</span>
               </button>
 
@@ -178,12 +214,12 @@ export default function Home() {
             </form>
 
             <div className="divider">
-              <span>Need a new administrator?</span>
+              <span>Role-based workspace security</span>
             </div>
 
-            <a className="secondary-button" href="#create-account">
-              Request workspace access
-            </a>
+            <div className="secondary-button login-role-summary">
+              Superadmin · Admin · Facilitator · Viewer
+            </div>
 
             <p className="legal-copy">
               By continuing, you agree to our <a href="#terms">Terms</a> and{" "}

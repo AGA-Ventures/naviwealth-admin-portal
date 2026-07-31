@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
+import type { AdminSessionUser } from "@/app/admin-access";
 import {
   stockInventory,
   type StockRecord,
@@ -30,7 +32,7 @@ type Dataset = {
 
 type DetailProps = {
   datasetId: string;
-  user: { name: string; email: string };
+  user: AdminSessionUser;
 };
 
 type StockPricePoint = {
@@ -62,6 +64,8 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
   const stockTriggerRef = useRef<HTMLTableRowElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+  const canEdit = user.permissions.includes("datasets.edit");
+  const canReuse = user.permissions.includes("datasets.reuse");
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -98,6 +102,8 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
   }, [datasetId]);
 
   useEffect(() => {
+    // Fetching is the external synchronization performed by this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDetail();
   }, [loadDetail]);
 
@@ -174,7 +180,7 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
   return (
     <div className="admin-app event-detail-page stock-detail-page">
       <aside className="admin-sidebar">
-        <a className="brand admin-brand" href="/" aria-label="NaviWealth home">
+        <Link className="brand admin-brand" href="/" aria-label="NaviWealth home">
           <span className="brand-mark" aria-hidden="true">
             <span>N</span>
           </span>
@@ -182,37 +188,41 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
             NaviWealth
             <small>ADMIN PORTAL</small>
           </span>
-        </a>
+        </Link>
 
         <nav className="admin-nav" aria-label="Admin navigation">
           <p>WORKSPACE</p>
-          <a href="/admin">
+          <Link href="/admin">
             <span className="nav-glyph">⌂</span>
             Overview
-          </a>
-          <a href="/admin/simulator">
+          </Link>
+          <Link href="/admin/simulator">
             <span className="nav-glyph">▶</span>
             Simulator
-          </a>
-          <a className="active" href="/admin/stocks">
+          </Link>
+          <Link className="active" href="/admin/stocks">
             <span className="nav-glyph">▦</span>
             Stock datasets
             <em>{stockCount}</em>
-          </a>
-          <a href="/admin/events">
+          </Link>
+          <Link href="/admin/events">
             <span className="nav-glyph">◈</span>
             Event datasets
             <em>{eventCount}</em>
-          </a>
+          </Link>
           <p>GAME SYSTEM</p>
-          <a href="/admin/users">
-            <span className="nav-glyph">◎</span>
-            User control
-          </a>
-          <a href="/admin/game-settings">
-            <span className="nav-glyph">⚙</span>
-            Game settings
-          </a>
+          {user.permissions.includes("users.manage") ? (
+            <Link href="/admin/users">
+              <span className="nav-glyph">◎</span>
+              User control
+            </Link>
+          ) : null}
+          {user.permissions.includes("settings.edit") ? (
+            <Link href="/admin/game-settings">
+              <span className="nav-glyph">⚙</span>
+              Game settings
+            </Link>
+          ) : null}
         </nav>
 
         {dataset && (
@@ -233,7 +243,7 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/signout-with-chatgpt?return_to=%2F" aria-label="Sign out">
+          <a href="/api/auth/logout" aria-label="Sign out">
             ↗
           </a>
         </div>
@@ -247,9 +257,9 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
             </span>
             <strong>NaviWealth</strong>
           </div>
-          <a className="detail-back-link" href="/admin/stocks">
+          <Link className="detail-back-link" href="/admin/stocks">
             ← Back to stock datasets
-          </a>
+          </Link>
           <div className="topbar-status">
             <span className="status-dot" />
             MARKET DATA ONLINE
@@ -264,15 +274,15 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
               <span>!</span>
               <h1>Stock set unavailable</h1>
               <p>{error}</p>
-              <a href="/admin/stocks">Return to Stock Datasets</a>
+              <Link href="/admin/stocks">Return to Stock Datasets</Link>
             </section>
           ) : (
             <>
               <section className="event-detail-hero">
                 <div className="stock-breadcrumb">
-                  <a href="/admin">Dataset control</a>
+                  <Link href="/admin">Dataset control</Link>
                   <span>/</span>
-                  <a href="/admin/stocks">Stocks</a>
+                  <Link href="/admin/stocks">Stocks</Link>
                   <span>/</span>
                   <strong>{dataset.name}</strong>
                 </div>
@@ -290,24 +300,24 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
                     <p>{dataset.description}</p>
                   </div>
                   <div className="event-detail-actions">
-                    <button type="button" onClick={() => setEditing(true)}>
+                    {canEdit ? <button type="button" onClick={() => setEditing(true)}>
                       Configure set
-                    </button>
-                    <button
+                    </button> : null}
+                    {canEdit ? <button
                       type="button"
                       onClick={() => void runAction("duplicate")}
                       disabled={busy === "duplicate"}
                     >
                       {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
-                    </button>
-                    <button
+                    </button> : null}
+                    {canReuse ? <button
                       className="event-primary"
                       type="button"
                       onClick={() => void runAction("reuse")}
                       disabled={busy === "reuse"}
                     >
                       {busy === "reuse" ? "Preparing…" : "Use in game →"}
-                    </button>
+                    </button> : <span className="access-mode-badge">VIEW ONLY</span>}
                   </div>
                 </div>
               </section>
@@ -551,6 +561,7 @@ export function StockDatasetDetail({ datasetId, user }: DetailProps) {
           stock={selectedStock.stock}
           slot={selectedStock.slot}
           datasetName={dataset.name}
+          canEdit={canEdit}
           onClose={closeStockRecord}
         />
       )}
@@ -569,11 +580,13 @@ function StockRecordModal({
   stock,
   slot,
   datasetName,
+  canEdit,
   onClose,
 }: {
   stock: StockRecord;
   slot: number;
   datasetName: string;
+  canEdit: boolean;
   onClose: () => void;
 }) {
   const modalRef = useRef<HTMLElement | null>(null);
@@ -825,13 +838,18 @@ function StockRecordModal({
             <div className="stock-sequence-heading">
               <div>
                 <p className="eyebrow">RAW PRICE SEQUENCE</p>
-                <h3>All 360 editable data points</h3>
+                <h3>
+                  {canEdit
+                    ? "All 360 editable data points"
+                    : "All 360 data points"}
+                </h3>
                 <span>
-                  Changes update the line immediately. Save to apply them to
-                  every dataset using this instrument.
+                  {canEdit
+                    ? "Changes update the line immediately. Save to apply them to every dataset using this instrument."
+                    : "This account can inspect the complete saved sequence without changing it."}
                 </span>
               </div>
-              <div className="stock-sequence-actions">
+              {canEdit ? <div className="stock-sequence-actions">
                 {dirtyUpdates.length > 0 && (
                   <span>
                     {dirtyUpdates.length} unsaved{" "}
@@ -861,7 +879,7 @@ function StockRecordModal({
                         dirtyUpdates.length > 0 ? dirtyUpdates.length : ""
                       } changes`}
                 </button>
-              </div>
+              </div> : <span className="access-mode-badge">VIEW ONLY</span>}
             </div>
 
             {loadingSeries && (
@@ -884,7 +902,7 @@ function StockRecordModal({
                         <th>Period</th>
                         <th>Game time</th>
                         <th>Saved value</th>
-                        <th>Editable price (RM)</th>
+                        <th>{canEdit ? "Editable price (RM)" : "Price (RM)"}</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -918,6 +936,7 @@ function StockRecordModal({
                                   step="0.01"
                                   inputMode="decimal"
                                   value={draftValues[index] ?? ""}
+                                  disabled={!canEdit}
                                   aria-invalid={!valid}
                                   onChange={(event) =>
                                     updateDraftPrice(index, event.target.value)

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { requireAdminSession } from "@/app/admin-session";
 import { GameSimulator } from "./GameSimulator";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +11,12 @@ export const metadata: Metadata = {
 };
 
 export default async function SimulatorPage() {
-  const user = await getChatGPTUser();
+  const user = await requireAdminSession(
+    "/admin/simulator",
+    "simulation.run",
+  );
 
   return (
-    <GameSimulator
-      user={{
-        name: user?.displayName ?? "NaviWealth Admin",
-        email: user?.email ?? "Local preview",
-      }}
-    />
+    <GameSimulator user={user} />
   );
 }

@@ -18,7 +18,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { id: rawId } = await context.params;
     const datasetId = positiveId(rawId);
-    const records = await listEventRecords(datasetId);
+    const records = await listEventRecords(datasetId, user);
     return Response.json({ records });
   } catch (error) {
     return eventStoreErrorResponse(error);

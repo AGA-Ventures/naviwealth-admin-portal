@@ -1,10 +1,16 @@
 import { env } from "cloudflare:workers";
+import type { AdminSessionUser } from "@/app/admin-access";
 
-export type AdminUserRole = "owner" | "admin" | "facilitator" | "viewer";
+export type AdminUserRole =
+  | "superadmin"
+  | "admin"
+  | "facilitator"
+  | "viewer";
 export type AdminUserStatus = "active" | "invited" | "suspended";
 
 export type AdminUser = {
   id: number;
+  authUserId: string | null;
   name: string;
   email: string;
   role: AdminUserRole;
@@ -33,11 +39,30 @@ type AdminUserInput = {
   email: string;
   role: AdminUserRole;
   status?: AdminUserStatus;
+  password?: string;
+};
+
+export type AdminAuditLog = {
+  id: number;
+  actorAdminUserId: number | null;
+  actorAuthUserId: string | null;
+  actorName: string;
+  actorEmail: string;
+  actorRole: AdminUserRole;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  summary: string;
+  beforeData: Record<string, unknown> | null;
+  afterData: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
 };
 
 type GatewayResponse = {
   user?: AdminUser;
   users?: AdminUser[];
+  logs?: AdminAuditLog[];
   settings?: GameSettings;
   error?: string;
 };
@@ -56,44 +81,56 @@ export class AdminControlError extends Error {
   }
 }
 
-export async function listAdminUsers() {
-  const response = await callGateway({ operation: "listAdminUsers" });
+export async function listAdminUsers(actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "listAdminUsers" }, actor);
   return response.users ?? [];
 }
 
-export async function createAdminUser(input: AdminUserInput) {
+export async function createAdminUser(
+  input: AdminUserInput,
+  actor: AdminSessionUser,
+) {
   const response = await callGateway({
     operation: "createAdminUser",
     input,
-  });
+  }, actor);
   return requiredUser(response);
 }
 
 export async function updateAdminUser(
   id: number,
   input: Partial<AdminUserInput>,
+  actor: AdminSessionUser,
 ) {
   const response = await callGateway({
     operation: "updateAdminUser",
     id,
     input,
-  });
+  }, actor);
   return requiredUser(response);
 }
 
-export async function getGameSettings() {
-  const response = await callGateway({ operation: "getGameSettings" });
+export async function listAdminAuditLogs(actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "listAuditLogs" }, actor);
+  return response.logs ?? [];
+}
+
+export async function getGameSettings(actor: AdminSessionUser) {
+  const response = await callGateway({ operation: "getGameSettings" }, actor);
   if (!response.settings) {
     throw new AdminControlError("Game settings could not be loaded.", 500);
   }
   return response.settings;
 }
 
-export async function updateGameSettings(input: Partial<GameSettings>) {
+export async function updateGameSettings(
+  input: Partial<GameSettings>,
+  actor: AdminSessionUser,
+) {
   const response = await callGateway({
     operation: "updateGameSettings",
     input,
-  });
+  }, actor);
   if (!response.settings) {
     throw new AdminControlError("Game settings could not be saved.", 500);
   }
@@ -102,6 +139,7 @@ export async function updateGameSettings(input: Partial<GameSettings>) {
 
 async function callGateway(
   payload: Record<string, unknown>,
+  actor: AdminSessionUser,
 ): Promise<GatewayResponse> {
   const runtime = env as unknown as RuntimeEnv;
   const supabaseUrl = runtime.SUPABASE_URL?.replace(/\/+$/, "");
@@ -124,7 +162,10 @@ async function callGateway(
           "content-type": "application/json",
           "x-naviwealth-db-key": gatewayKey,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          actorUserId: actor.authUserId,
+        }),
         signal: AbortSignal.timeout(15_000),
       },
     );

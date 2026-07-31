@@ -5,6 +5,8 @@ import {
 } from "@/db/stock-prices";
 import {
   getDatasetRequestUser,
+  forbiddenResponse,
+  hasRequestPermission,
   unauthorizedResponse,
 } from "@/app/api/datasets/auth";
 
@@ -18,7 +20,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const id = await stockId(context);
-    return Response.json({ series: await getStockPriceSeries(id) });
+    return Response.json({ series: await getStockPriceSeries(id, user) });
   } catch (error) {
     return stockPriceErrorResponse(error);
   }
@@ -27,6 +29,9 @@ export async function GET(request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getDatasetRequestUser(request);
   if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "datasets.edit")) {
+    return forbiddenResponse("Administrator edit access is required.");
+  }
 
   try {
     const id = await stockId(context);
@@ -35,6 +40,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       series: await updateStockPriceSeries(
         id,
         Array.isArray(payload.updates) ? payload.updates : [],
+        user,
       ),
     });
   } catch (error) {
