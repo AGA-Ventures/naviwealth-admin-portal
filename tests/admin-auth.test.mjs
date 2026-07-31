@@ -78,3 +78,23 @@ test("only superadmins create login accounts with temporary passwords", async ()
   assert.match(gateway, /email_confirm: true/);
   assert.match(gateway, /Keep at least one active superadmin account/);
 });
+
+test("keeps user sessions isolated from the service-role database client", async () => {
+  const gateway = await source("supabase/functions/naviwealth-datasets/index.ts");
+
+  assert.match(
+    gateway,
+    /const authClient = createAdminClient\(\);[\s\S]*?authClient\.auth\.signInWithPassword/,
+  );
+  assert.match(
+    gateway,
+    /const authClient = createAdminClient\(\);[\s\S]*?authClient\.auth\.refreshSession/,
+  );
+  assert.match(
+    gateway,
+    /const authClient = createAdminClient\(\);[\s\S]*?authClient\.auth\.getUser/,
+  );
+  assert.doesNotMatch(gateway, /client\.auth\.signInWithPassword/);
+  assert.doesNotMatch(gateway, /client\.auth\.refreshSession/);
+  assert.doesNotMatch(gateway, /client\.auth\.getUser/);
+});

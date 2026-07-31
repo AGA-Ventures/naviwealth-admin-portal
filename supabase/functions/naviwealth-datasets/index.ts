@@ -458,7 +458,8 @@ async function loginAdmin(
     throw new GatewayError("Invalid email or password.", 401);
   }
 
-  const { data, error } = await client.auth.signInWithPassword({
+  const authClient = createAdminClient();
+  const { data, error } = await authClient.auth.signInWithPassword({
     email,
     password,
   });
@@ -491,7 +492,8 @@ async function refreshAdminSession(
   refreshTokenValue: unknown,
 ) {
   const refreshToken = requiredToken(refreshTokenValue, "refresh");
-  const { data, error } = await client.auth.refreshSession({
+  const authClient = createAdminClient();
+  const { data, error } = await authClient.auth.refreshSession({
     refresh_token: refreshToken,
   });
   if (error || !data.user || !data.session) {
@@ -506,7 +508,8 @@ async function getAdminSession(
   accessTokenValue: unknown,
 ) {
   const accessToken = requiredToken(accessTokenValue, "access");
-  const { data, error } = await client.auth.getUser(accessToken);
+  const authClient = createAdminClient();
+  const { data, error } = await authClient.auth.getUser(accessToken);
   if (error || !data.user) {
     throw new GatewayError("Sign in is required.", 401);
   }
