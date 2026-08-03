@@ -76,9 +76,33 @@ test("only superadmins create login accounts with temporary passwords", async ()
   assert.match(userControl, /Temporary password/);
   assert.match(userControl, /minLength=\{12\}/);
   assert.match(userControl, /password: invitePassword/);
+  assert.match(userControl, /Copy access details/);
+  assert.match(userControl, /Open email draft/);
+  assert.match(userControl, /loginUrl: ADMIN_LOGIN_URL/);
   assert.match(gateway, /client\.auth\.admin\.createUser/);
   assert.match(gateway, /email_confirm: true/);
   assert.match(gateway, /Keep at least one active superadmin account/);
+});
+
+test("lets every signed-in administrator manage their own login securely", async () => {
+  const [account, passwordRoute, session, authStore, gateway] =
+    await Promise.all([
+      source("app/admin/account/AccountManagement.tsx"),
+      source("app/api/auth/password/route.ts"),
+      source("app/admin-session.ts"),
+      source("db/admin-auth.ts"),
+      source("supabase/functions/naviwealth-datasets/index.ts"),
+    ]);
+
+  assert.match(account, /fetch\("\/api\/auth\/password"/);
+  assert.match(account, /Current password/);
+  assert.match(account, /Confirm new password/);
+  assert.match(passwordRoute, /requestAccessToken/);
+  assert.match(session, /export function requestAccessToken/);
+  assert.match(authStore, /operation: "changeAdminPassword"/);
+  assert.match(gateway, /current_password: currentPassword/);
+  assert.match(gateway, /admin_user\.password\.update/);
+  assert.match(gateway, /Authorization: `Bearer \$\{accessToken\}`/);
 });
 
 test("keeps user sessions isolated from the service-role database client", async () => {

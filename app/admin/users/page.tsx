@@ -5,7 +5,7 @@ import { UserControl } from "./UserControl";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "User Control | NaviWealth",
+  title: "Admin Management | NaviWealth",
   description:
     "Manage NaviWealth admin access, roles, invitations, and account status.",
 };

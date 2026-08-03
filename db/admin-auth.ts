@@ -16,6 +16,7 @@ type RuntimeEnv = {
 type GatewayResponse = {
   session?: AdminAuthSession;
   user?: AdminSessionUser;
+  updated?: boolean;
   error?: string;
 };
 
@@ -60,6 +61,22 @@ export async function validateAdminSession(accessToken: string) {
     throw new AdminAuthError("Sign in is required.", 401);
   }
   return response.user;
+}
+
+export async function changeAdminPassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string,
+) {
+  const response = await callAuthGateway({
+    operation: "changeAdminPassword",
+    accessToken,
+    currentPassword,
+    password: newPassword,
+  });
+  if (!response.updated) {
+    throw new AdminAuthError("The password could not be updated.", 500);
+  }
 }
 
 async function callAuthGateway(

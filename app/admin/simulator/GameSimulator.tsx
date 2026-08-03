@@ -290,7 +290,7 @@ export function GameSimulator({ user }: GameSimulatorProps) {
           {user.permissions.includes("users.manage") ? (
             <Link href="/admin/users">
               <span className="nav-glyph">◎</span>
-              User control
+              Admin management
             </Link>
           ) : null}
           {user.permissions.includes("settings.edit") ? (
@@ -311,16 +311,18 @@ export function GameSimulator({ user }: GameSimulatorProps) {
           </div>
         </div>
 
-        <div className="sidebar-user">
+        <Link
+          className="sidebar-user sidebar-user-link"
+          href="/admin/account"
+          aria-label="Manage personal login"
+        >
           <span className="user-avatar">{initials(user.name)}</span>
           <span>
             <strong>{user.name}</strong>
             <small>{user.email}</small>
           </span>
-          <a href="/api/auth/logout" aria-label="Sign out">
-            ↗
-          </a>
-        </div>
+          <span className="sidebar-user-arrow" aria-hidden="true">→</span>
+        </Link>
       </aside>
 
       <main className="admin-main">

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { AdminSessionUser } from "@/app/admin-access";
+import { ADMIN_LOGIN_URL } from "@/app/admin-login";
 import { AdminControlSidebar } from "../AdminControlSidebar";
 
 type AdminUserRole = "superadmin" | "admin" | "facilitator" | "viewer";
@@ -35,6 +36,14 @@ type UserControlProps = {
   currentUser: AdminSessionUser;
 };
 
+type InviteHandoff = {
+  name: string;
+  email: string;
+  password: string;
+  role: AdminUserRole;
+  loginUrl: string;
+};
+
 const roleLabels: Record<AdminUserRole, string> = {
   superadmin: "Superadmin",
   admin: "Admin",
@@ -62,7 +71,9 @@ export function UserControl({ currentUser }: UserControlProps) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteRole, setInviteRole] =
-    useState<AdminUserRole>("facilitator");
+    useState<AdminUserRole>("admin");
+  const [inviteHandoff, setInviteHandoff] =
+    useState<InviteHandoff | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,13 +199,20 @@ export function UserControl({ currentUser }: UserControlProps) {
         throw new Error(payload.error ?? "Unable to create the invitation.");
       }
       setUsers((current) => [...current, payload.user]);
+      setInviteHandoff({
+        name: payload.user.name,
+        email: payload.user.email,
+        password: invitePassword,
+        role: payload.user.role,
+        loginUrl: ADMIN_LOGIN_URL,
+      });
       setInviteName("");
       setInviteEmail("");
       setInvitePassword("");
-      setInviteRole("facilitator");
+      setInviteRole("admin");
       setInviteOpen(false);
       await refreshAuditLogs();
-      setToast(`${payload.user.name} can now sign in.`);
+      setToast(`${payload.user.name} can now sign in. Share their access details.`);
     } catch (inviteError) {
       setToast(
         inviteError instanceof Error
@@ -213,6 +231,16 @@ export function UserControl({ currentUser }: UserControlProps) {
       throw new Error(payload.error ?? "Unable to refresh audit history.");
     }
     setAuditLogs(payload.logs);
+  }
+
+  async function copyInviteDetails() {
+    if (!inviteHandoff) return;
+    try {
+      await navigator.clipboard.writeText(inviteMessage(inviteHandoff));
+      setToast("Login link and temporary password copied.");
+    } catch {
+      setToast("Copy failed. Select the access details manually.");
+    }
   }
 
   return (
@@ -256,10 +284,10 @@ export function UserControl({ currentUser }: UserControlProps) {
           <section className="admin-heading">
             <div>
               <p className="eyebrow">TEAM &amp; PERMISSIONS</p>
-              <h1>User control</h1>
+              <h1>Admin management</h1>
               <p>
-                Manage who can operate NaviWealth, what they can change, and
-                whether their workspace access is active.
+                Create administrator logins, assign permissions, and share
+                secure first-time access details.
               </p>
             </div>
             <button
@@ -268,7 +296,7 @@ export function UserControl({ currentUser }: UserControlProps) {
               onClick={() => setInviteOpen(true)}
             >
               <span aria-hidden="true">＋</span>
-              Create login
+              Create administrator
             </button>
           </section>
 
@@ -312,7 +340,7 @@ export function UserControl({ currentUser }: UserControlProps) {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">WORKSPACE DIRECTORY</p>
-                  <h2>Admin users</h2>
+                  <h2>Administrator directory</h2>
                   <p>Roles and access states are saved to the shared database.</p>
                 </div>
                 <span className="panel-count">{users.length} users</span>
@@ -634,6 +662,13 @@ export function UserControl({ currentUser }: UserControlProps) {
                   placeholder="At least 12 characters"
                 />
                 <small>Share this securely. The user can sign in immediately.</small>
+                <button
+                  className="generate-password"
+                  type="button"
+                  onClick={() => setInvitePassword(generateTemporaryPassword())}
+                >
+                  Generate strong temporary password
+                </button>
               </label>
             </div>
             <div className="modal-actions">
@@ -649,6 +684,79 @@ export function UserControl({ currentUser }: UserControlProps) {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {inviteHandoff ? (
+        <div className="modal-backdrop" role="presentation">
+          <article
+            className="dataset-modal control-modal invite-handoff-modal"
+            aria-labelledby="invite-handoff-title"
+          >
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">LOGIN READY</p>
+                <h2 id="invite-handoff-title">Share administrator access</h2>
+                <p>
+                  Send these one-time details to {inviteHandoff.name} through a
+                  secure channel.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setInviteHandoff(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="invite-handoff-body">
+              <div className="invite-ready-banner">
+                <span>✓</span>
+                <div>
+                  <strong>Account created</strong>
+                  <p>
+                    {roleLabels[inviteHandoff.role]} access is active and ready
+                    for first sign-in.
+                  </p>
+                </div>
+              </div>
+              <dl className="invite-access-details">
+                <div>
+                  <dt>Login link</dt>
+                  <dd>{inviteHandoff.loginUrl}</dd>
+                </div>
+                <div>
+                  <dt>Email address</dt>
+                  <dd>{inviteHandoff.email}</dd>
+                </div>
+                <div>
+                  <dt>Temporary password</dt>
+                  <dd className="temporary-password-value">
+                    {inviteHandoff.password}
+                  </dd>
+                </div>
+              </dl>
+              <p className="invite-security-note">
+                Ask the administrator to open Personal login from the sidebar
+                and replace this password after signing in.
+              </p>
+            </div>
+            <div className="modal-actions invite-handoff-actions">
+              <button type="button" onClick={() => setInviteHandoff(null)}>
+                Done
+              </button>
+              <button type="button" onClick={() => void copyInviteDetails()}>
+                Copy access details
+              </button>
+              <a
+                className="admin-primary"
+                href={inviteEmailHref(inviteHandoff)}
+              >
+                Open email draft
+              </a>
+            </div>
+          </article>
         </div>
       ) : null}
 
@@ -698,4 +806,33 @@ function auditIcon(action: string) {
   if (action.includes("create") || action.includes("duplicate")) return "+";
   if (action.includes("reuse")) return "↻";
   return "✓";
+}
+
+function generateTemporaryPassword() {
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const values = new Uint32Array(18);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join(
+    "",
+  );
+}
+
+function inviteMessage(invite: InviteHandoff) {
+  return [
+    `Hi ${invite.name},`,
+    "",
+    "Your NaviWealth administrator login is ready.",
+    `Login: ${invite.loginUrl}`,
+    `Email: ${invite.email}`,
+    `Temporary password: ${invite.password}`,
+    "",
+    "After signing in, open Personal login from the sidebar and set a new password.",
+  ].join("\n");
+}
+
+function inviteEmailHref(invite: InviteHandoff) {
+  const subject = encodeURIComponent("Your NaviWealth administrator login");
+  const body = encodeURIComponent(inviteMessage(invite));
+  return `mailto:${encodeURIComponent(invite.email)}?subject=${subject}&body=${body}`;
 }

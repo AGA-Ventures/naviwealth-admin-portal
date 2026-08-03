@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AdminSessionUser } from "@/app/admin-access";
 
 type AdminControlSidebarProps = {
-  active: "users" | "settings";
+  active: "users" | "settings" | "account";
   user: AdminSessionUser;
   footer: {
     eyebrow: string;
@@ -54,7 +54,7 @@ export function AdminControlSidebar({
             href="/admin/users"
           >
             <span className="nav-glyph">◎</span>
-            User control
+            Admin management
           </Link>
         ) : null}
         {user.permissions.includes("settings.edit") ? (
@@ -78,16 +78,20 @@ export function AdminControlSidebar({
         </small>
       </div>
 
-      <div className="sidebar-user">
+      <Link
+        className={`sidebar-user sidebar-user-link ${
+          active === "account" ? "active" : ""
+        }`}
+        href="/admin/account"
+        aria-label="Manage personal login"
+      >
         <span className="user-avatar">{initials(user.name)}</span>
         <span>
           <strong>{user.name}</strong>
           <small>{user.email}</small>
         </span>
-        <a href="/api/auth/logout" aria-label="Sign out">
-          ↗
-        </a>
-      </div>
+        <span className="sidebar-user-arrow" aria-hidden="true">→</span>
+      </Link>
     </aside>
   );
 }

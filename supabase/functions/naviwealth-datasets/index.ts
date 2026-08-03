@@ -1,3 +1,4 @@
+/// <reference lib="deno.ns" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {
   createClient,
@@ -156,6 +157,7 @@ type RequestBody = {
   refreshToken?: unknown;
   email?: unknown;
   password?: unknown;
+  currentPassword?: unknown;
   input?:
     | DatasetInput
     | AdminUserInput
@@ -200,6 +202,16 @@ Deno.serve(async (request) => {
     if (operation === "getAdminSession") {
       return json({
         user: await getAdminSession(client, body.accessToken),
+      });
+    }
+    if (operation === "changeAdminPassword") {
+      return json({
+        updated: await changeAdminPassword(
+          client,
+          body.accessToken,
+          body.currentPassword,
+          body.password,
+        ),
       });
     }
 
@@ -446,6 +458,26 @@ function createAdminClient() {
   });
 }
 
+function createUserClient(accessToken: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const secretKeys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
+  const secretKey =
+    secretKeys.default ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !secretKey) {
+    throw new GatewayError("Database service is not configured.", 503);
+  }
+
+  return createClient(supabaseUrl, secretKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 async function loginAdmin(
   client: SupabaseClient,
   emailValue: unknown,
@@ -516,6 +548,58 @@ async function getAdminSession(
   return mapAdminSessionUser(
     await findActiveAdminByAuthId(client, data.user.id),
   );
+}
+
+async function changeAdminPassword(
+  client: SupabaseClient,
+  accessTokenValue: unknown,
+  currentPasswordValue: unknown,
+  newPasswordValue: unknown,
+) {
+  const accessToken = requiredToken(accessTokenValue, "access");
+  const currentPassword = cleanPassword(currentPasswordValue);
+  const newPassword = cleanPassword(newPasswordValue);
+  if (currentPassword === newPassword) {
+    throw new GatewayError(
+      "Choose a new password that is different from the current password.",
+      400,
+    );
+  }
+
+  const authClient = createAdminClient();
+  const { data: identity, error: identityError } =
+    await authClient.auth.getUser(accessToken);
+  if (identityError || !identity.user) {
+    throw new GatewayError("Sign in is required.", 401);
+  }
+  const row = await findActiveAdminByAuthId(client, identity.user.id);
+
+  const userClient = createUserClient(accessToken);
+  const { data, error } = await userClient.auth.updateUser({
+    password: newPassword,
+    current_password: currentPassword,
+  });
+  if (error || !data.user || data.user.id !== identity.user.id) {
+    throw new GatewayError(
+      error?.message ?? "The current password is incorrect.",
+      error?.status ?? 400,
+    );
+  }
+
+  await writeAudit(client, {
+    id: row.id,
+    authUserId: identity.user.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+  }, {
+    action: "admin_user.password.update",
+    resourceType: "admin_user",
+    resourceId: String(row.id),
+    summary: `${row.email} changed their login password.`,
+  });
+  return true;
 }
 
 async function findAdminUserByEmail(

@@ -110,6 +110,10 @@ export function requestRefreshToken(request: Request) {
   return readCookie(request.headers.get("cookie"), REFRESH_COOKIE);
 }
 
+export function requestAccessToken(request: Request) {
+  return readCookie(request.headers.get("cookie"), ACCESS_COOKIE);
+}
+
 export function safeReturnTo(value: string | null | undefined) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return "/admin";

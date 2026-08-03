@@ -8,7 +8,7 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("routes the game-system sidebar to user control and game settings", async () => {
+test("routes the game-system sidebar to admin management and game settings", async () => {
   const files = [
     "app/admin/AdminPortal.tsx",
     "app/admin/stocks/StockDatasets.tsx",
@@ -21,9 +21,10 @@ test("routes the game-system sidebar to user control and game settings", async (
   for (const file of files) {
     const content = await source(file);
     assert.match(content, /(?:href=)"\/admin\/users"/);
-    assert.match(content, /User control/);
+    assert.match(content, /Admin management/);
     assert.match(content, /(?:href=)"\/admin\/game-settings"/);
     assert.match(content, /Game settings/);
+    assert.match(content, /(?:href=)"\/admin\/account"/);
   }
 });
 
