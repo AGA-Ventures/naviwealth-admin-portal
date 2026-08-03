@@ -23,6 +23,8 @@ test("uses real Supabase sessions and HTTP-only login cookies", async () => {
   assert.match(session, /SameSite=Lax/);
   assert.match(session, /requireAdminSession/);
   assert.match(home, /fetch\("\/api\/auth\/login"/);
+  assert.match(home, /window\.location\.assign\(payload\.returnTo \?\? "\/admin"\)/);
+  assert.doesNotMatch(home, /router\.(replace|refresh)/);
   assert.doesNotMatch(home, /signin-with-chatgpt/);
 });
 

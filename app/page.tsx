@@ -1,12 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 
 const marketBars = [36, 54, 42, 68, 58, 78, 64, 88, 72, 96, 82, 100];
 
 export default function Home() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,8 +35,7 @@ export default function Home() {
         throw new Error(payload.error ?? "Unable to sign in.");
       }
       setMessage("Access verified. Opening the control center…");
-      router.replace(payload.returnTo ?? "/admin");
-      router.refresh();
+      window.location.assign(payload.returnTo ?? "/admin");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to sign in.",
