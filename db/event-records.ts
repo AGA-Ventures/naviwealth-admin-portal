@@ -15,6 +15,7 @@ export type StoredEventRecord = {
 
 type GatewayResponse = {
   record?: StoredEventRecord;
+  deletedRecord?: StoredEventRecord;
   records?: StoredEventRecord[];
   error?: string;
 };
@@ -61,6 +62,45 @@ export async function updateEventRecord(
     );
   }
   return response.record;
+}
+
+export async function createEventRecord(
+  datasetId: number,
+  input: {
+    insertAfterRowNumber: number;
+    data: EventRecordData;
+  },
+  actor: AdminSessionUser,
+) {
+  const response = await callGateway({
+    operation: "createEventRecord",
+    id: datasetId,
+    input,
+  }, actor);
+  if (!response.record) {
+    throw new EventRecordStoreError(
+      "The new event record could not be loaded.",
+      500,
+    );
+  }
+  return response.record;
+}
+
+export async function deleteEventRecord(
+  recordId: number,
+  actor: AdminSessionUser,
+) {
+  const response = await callGateway({
+    operation: "deleteEventRecord",
+    id: recordId,
+  }, actor);
+  if (!response.deletedRecord) {
+    throw new EventRecordStoreError(
+      "The removed event record could not be confirmed.",
+      500,
+    );
+  }
+  return response.deletedRecord;
 }
 
 async function callGateway(

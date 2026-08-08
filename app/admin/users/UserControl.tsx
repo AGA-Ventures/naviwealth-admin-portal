@@ -1,7 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AdminSessionUser } from "@/app/admin-access";
+import type {
+  AdminPermission,
+  AdminSessionUser,
+} from "@/app/admin-access";
 import { ADMIN_LOGIN_URL } from "@/app/admin-login";
 import { AdminControlSidebar } from "../AdminControlSidebar";
 
@@ -32,6 +35,12 @@ type AdminAuditLog = {
   createdAt: string;
 };
 
+type RolePermissionConfig = {
+  role: AdminUserRole;
+  permissions: AdminPermission[];
+  updatedAt: string | null;
+};
+
 type UserControlProps = {
   currentUser: AdminSessionUser;
 };
@@ -51,6 +60,74 @@ const roleLabels: Record<AdminUserRole, string> = {
   viewer: "Viewer",
 };
 
+const roleGuide: Record<
+  AdminUserRole,
+  { icon: string; tone: "purple" | "cyan" | "muted"; description: string }
+> = {
+  superadmin: {
+    icon: "◆",
+    tone: "purple",
+    description: "Controls accounts, permissions, settings, and audit history.",
+  },
+  admin: {
+    icon: "◇",
+    tone: "purple",
+    description: "Edits datasets and shared game configuration.",
+  },
+  facilitator: {
+    icon: "▶",
+    tone: "cyan",
+    description: "Runs simulations and prepares datasets for sessions.",
+  },
+  viewer: {
+    icon: "◌",
+    tone: "muted",
+    description: "Read-only visibility across the operations workspace.",
+  },
+};
+
+const permissionGuide: Array<{
+  permission: AdminPermission;
+  label: string;
+  description: string;
+}> = [
+  {
+    permission: "portal.view",
+    label: "View admin portal",
+    description: "Open the operations workspace and read shared data.",
+  },
+  {
+    permission: "simulation.run",
+    label: "Run simulator",
+    description: "Open the simulator and prepare live game sessions.",
+  },
+  {
+    permission: "datasets.reuse",
+    label: "Prepare datasets",
+    description: "Mark approved stock and event sets for game reuse.",
+  },
+  {
+    permission: "datasets.edit",
+    label: "Edit datasets",
+    description: "Create, duplicate, localize, and update dataset records.",
+  },
+  {
+    permission: "settings.edit",
+    label: "Edit game settings",
+    description: "Change the shared rules and simulator configuration.",
+  },
+  {
+    permission: "users.manage",
+    label: "Manage administrators",
+    description: "Create logins, change user roles, and edit role permissions.",
+  },
+  {
+    permission: "audit.view",
+    label: "View action history",
+    description: "Review the audit trail for saved administrator changes.",
+  },
+];
+
 const statusLabels: Record<AdminUserStatus, string> = {
   active: "Active",
   invited: "Invited",
@@ -60,11 +137,14 @@ const statusLabels: Record<AdminUserStatus, string> = {
 export function UserControl({ currentUser }: UserControlProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [rolePermissions, setRolePermissions] =
+    useState<RolePermissionConfig[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | AdminUserStatus>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<number | "invite" | null>(null);
+  const [busy, setBusy] =
+    useState<number | "invite" | "permissions" | null>(null);
   const [toast, setToast] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState("");
@@ -74,28 +154,43 @@ export function UserControl({ currentUser }: UserControlProps) {
     useState<AdminUserRole>("admin");
   const [inviteHandoff, setInviteHandoff] =
     useState<InviteHandoff | null>(null);
+  const [roleEditorOpen, setRoleEditorOpen] = useState(false);
+  const [editingRole, setEditingRole] =
+    useState<AdminUserRole>("admin");
+  const [permissionDraft, setPermissionDraft] =
+    useState<AdminPermission[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [usersResponse, auditResponse] = await Promise.all([
-          fetch("/api/admin-users", { cache: "no-store" }),
-          fetch("/api/audit-logs", { cache: "no-store" }),
-        ]);
-        const [usersPayload, auditPayload] = await Promise.all([
-          usersResponse.json(),
-          auditResponse.json(),
-        ]);
+        const [usersResponse, auditResponse, permissionsResponse] =
+          await Promise.all([
+            fetch("/api/admin-users", { cache: "no-store" }),
+            fetch("/api/audit-logs", { cache: "no-store" }),
+            fetch("/api/role-permissions", { cache: "no-store" }),
+          ]);
+        const [usersPayload, auditPayload, permissionsPayload] =
+          await Promise.all([
+            usersResponse.json(),
+            auditResponse.json(),
+            permissionsResponse.json(),
+          ]);
         if (!usersResponse.ok) {
           throw new Error(usersPayload.error ?? "Unable to load admin users.");
         }
         if (!auditResponse.ok) {
           throw new Error(auditPayload.error ?? "Unable to load audit history.");
         }
+        if (!permissionsResponse.ok) {
+          throw new Error(
+            permissionsPayload.error ?? "Unable to load role permissions.",
+          );
+        }
         if (!cancelled) {
           setUsers(usersPayload.users);
           setAuditLogs(auditPayload.logs);
+          setRolePermissions(permissionsPayload.rolePermissions);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -231,6 +326,63 @@ export function UserControl({ currentUser }: UserControlProps) {
       throw new Error(payload.error ?? "Unable to refresh audit history.");
     }
     setAuditLogs(payload.logs);
+  }
+
+  function selectRoleForEditing(role: AdminUserRole) {
+    const current = rolePermissions.find((config) => config.role === role);
+    setEditingRole(role);
+    setPermissionDraft(current?.permissions ?? []);
+  }
+
+  function openRoleEditor(role: AdminUserRole = "admin") {
+    selectRoleForEditing(role);
+    setRoleEditorOpen(true);
+  }
+
+  function togglePermission(permission: AdminPermission) {
+    if (isRequiredPermission(editingRole, permission)) return;
+    setPermissionDraft((current) =>
+      current.includes(permission)
+        ? current.filter((candidate) => candidate !== permission)
+        : [...current, permission],
+    );
+  }
+
+  async function saveRolePermissions(event: FormEvent) {
+    event.preventDefault();
+    setBusy("permissions");
+    try {
+      const response = await fetch("/api/role-permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: editingRole,
+          permissions: permissionDraft,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to update role permissions.");
+      }
+      setRolePermissions((current) =>
+        current.map((config) =>
+          config.role === payload.rolePermission.role
+            ? payload.rolePermission
+            : config,
+        ),
+      );
+      setPermissionDraft(payload.rolePermission.permissions);
+      await refreshAuditLogs();
+      setToast(`${roleLabels[editingRole]} permissions updated.`);
+    } catch (saveError) {
+      setToast(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to update role permissions.",
+      );
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function copyInviteDetails() {
@@ -488,36 +640,37 @@ export function UserControl({ currentUser }: UserControlProps) {
                     <p className="eyebrow">ROLE GUIDE</p>
                     <h2>Permission levels</h2>
                   </div>
+                  <button
+                    className="role-guide-edit"
+                    type="button"
+                    onClick={() => openRoleEditor()}
+                    disabled={loading || rolePermissions.length === 0}
+                  >
+                    Edit roles
+                  </button>
                 </div>
                 <div className="role-guide">
-                  <article>
-                    <span className="purple">◆</span>
-                    <div>
-                      <strong>Superadmin</strong>
-                      <p>Controls accounts, permissions, settings, and audit history.</p>
-                    </div>
-                  </article>
-                  <article>
-                    <span className="purple">◇</span>
-                    <div>
-                      <strong>Admin</strong>
-                      <p>Edits datasets and shared game configuration.</p>
-                    </div>
-                  </article>
-                  <article>
-                    <span className="cyan">▶</span>
-                    <div>
-                      <strong>Facilitator</strong>
-                      <p>Run simulations and prepare datasets for sessions.</p>
-                    </div>
-                  </article>
-                  <article>
-                    <span className="muted">◌</span>
-                    <div>
-                      <strong>Viewer</strong>
-                      <p>Read-only visibility across the operations workspace.</p>
-                    </div>
-                  </article>
+                  {(Object.keys(roleLabels) as AdminUserRole[]).map((role) => {
+                    const permissionCount =
+                      rolePermissions.find((config) => config.role === role)
+                        ?.permissions.length ?? 0;
+                    const guide = roleGuide[role];
+                    return (
+                      <article key={role}>
+                        <span className={guide.tone}>{guide.icon}</span>
+                        <div className="role-guide-copy">
+                          <div className="role-guide-title-row">
+                            <strong>{roleLabels[role]}</strong>
+                            <em>
+                              {permissionCount || "—"} permission
+                              {permissionCount === 1 ? "" : "s"}
+                            </em>
+                          </div>
+                          <p>{guide.description}</p>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
 
@@ -687,6 +840,140 @@ export function UserControl({ currentUser }: UserControlProps) {
         </div>
       ) : null}
 
+      {roleEditorOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (
+              event.currentTarget === event.target &&
+              busy !== "permissions"
+            ) {
+              setRoleEditorOpen(false);
+            }
+          }}
+        >
+          <form
+            className="dataset-modal role-permission-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="role-permission-title"
+            onSubmit={saveRolePermissions}
+          >
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">ROLE ACCESS</p>
+                <h2 id="role-permission-title">Edit role permissions</h2>
+                <p>
+                  Choose what every administrator assigned to this role can do.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                disabled={busy === "permissions"}
+                onClick={() => setRoleEditorOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="role-permission-body">
+              <div
+                className="role-editor-tabs"
+                role="tablist"
+                aria-label="Administrator role"
+              >
+                {(Object.keys(roleLabels) as AdminUserRole[]).map((role) => (
+                  <button
+                    className={editingRole === role ? "active" : ""}
+                    key={role}
+                    type="button"
+                    role="tab"
+                    aria-selected={editingRole === role}
+                    onClick={() => selectRoleForEditing(role)}
+                  >
+                    <span className={roleGuide[role].tone}>
+                      {roleGuide[role].icon}
+                    </span>
+                    <strong>{roleLabels[role]}</strong>
+                    <small>
+                      {rolePermissions.find((config) => config.role === role)
+                        ?.permissions.length ?? 0}
+                    </small>
+                  </button>
+                ))}
+              </div>
+
+              <div className="role-editor-summary">
+                <div>
+                  <p className="eyebrow">SELECTED ROLE</p>
+                  <h3>{roleLabels[editingRole]}</h3>
+                  <span>{roleGuide[editingRole].description}</span>
+                </div>
+                <strong>
+                  {users.filter((user) => user.role === editingRole).length} user
+                  {users.filter((user) => user.role === editingRole).length === 1
+                    ? ""
+                    : "s"}
+                </strong>
+              </div>
+
+              <div className="role-permission-list">
+                {permissionGuide.map((item) => {
+                  const lockLabel = permissionLockLabel(
+                    editingRole,
+                    item.permission,
+                  );
+                  return (
+                    <label
+                      className={lockLabel ? "required" : ""}
+                      key={item.permission}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={permissionDraft.includes(item.permission)}
+                        disabled={Boolean(lockLabel) || busy === "permissions"}
+                        onChange={() => togglePermission(item.permission)}
+                      />
+                      <span className="role-permission-copy">
+                        <strong>{item.label}</strong>
+                        <small>{item.description}</small>
+                      </span>
+                      {lockLabel ? <em>{lockLabel}</em> : null}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="role-permission-note">
+                Changes apply to every active user with this role on their next
+                request. The update is recorded in Action history.
+              </p>
+            </div>
+
+            <div className="modal-actions role-permission-actions">
+              <button
+                type="button"
+                disabled={busy === "permissions"}
+                onClick={() => setRoleEditorOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="admin-primary"
+                type="submit"
+                disabled={busy === "permissions"}
+              >
+                {busy === "permissions"
+                  ? "Saving permissions…"
+                  : `Save ${roleLabels[editingRole]}`}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {inviteHandoff ? (
         <div className="modal-backdrop" role="presentation">
           <article
@@ -768,6 +1055,24 @@ export function UserControl({ currentUser }: UserControlProps) {
       ) : null}
     </div>
   );
+}
+
+function isRequiredPermission(
+  role: AdminUserRole,
+  permission: AdminPermission,
+) {
+  return permissionLockLabel(role, permission) !== null;
+}
+
+function permissionLockLabel(
+  role: AdminUserRole,
+  permission: AdminPermission,
+) {
+  if (permission === "portal.view") return "Required";
+  if (permission === "users.manage" || permission === "audit.view") {
+    return role === "superadmin" ? "Required" : "Superadmin only";
+  }
+  return null;
 }
 
 function initials(name: string) {

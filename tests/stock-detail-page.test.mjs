@@ -72,6 +72,19 @@ test("provides authored profiles for all eight simulated instruments", async () 
   }
 });
 
+test("normalizes stock trend bars within the compact sparkline", async () => {
+  const [library, styles] = await Promise.all([
+    source("app/admin/stocks/StockDatasets.tsx"),
+    source("app/globals.css"),
+  ]);
+
+  assert.match(library, /const normalizedValues/);
+  assert.match(library, /12 \+ \(\(value - minimum\) \/ range\) \* 88/);
+  assert.doesNotMatch(library, /height: `\$\{value\}%`/);
+  assert.match(styles, /\.stock-sparkline \{[^}]*overflow: hidden;/s);
+  assert.match(styles, /\.stock-sparkline i \{[^}]*max-height: 100%;/s);
+});
+
 test("shows and edits the complete 360-point sequence with a live line chart", async () => {
   const [detail, store, route, gateway] = await Promise.all([
     source("app/admin/stocks/[id]/StockDatasetDetail.tsx"),

@@ -1,5 +1,8 @@
 import { env } from "cloudflare:workers";
-import type { AdminSessionUser } from "@/app/admin-access";
+import type {
+  AdminPermission,
+  AdminSessionUser,
+} from "@/app/admin-access";
 
 export type AdminUserRole =
   | "superadmin"
@@ -7,6 +10,12 @@ export type AdminUserRole =
   | "facilitator"
   | "viewer";
 export type AdminUserStatus = "active" | "invited" | "suspended";
+
+export type RolePermissionConfig = {
+  role: AdminUserRole;
+  permissions: AdminPermission[];
+  updatedAt: string | null;
+};
 
 export type AdminUser = {
   id: number;
@@ -64,6 +73,8 @@ type GatewayResponse = {
   users?: AdminUser[];
   logs?: AdminAuditLog[];
   settings?: GameSettings;
+  rolePermission?: RolePermissionConfig;
+  rolePermissions?: RolePermissionConfig[];
   error?: string;
 };
 
@@ -113,6 +124,35 @@ export async function updateAdminUser(
 export async function listAdminAuditLogs(actor: AdminSessionUser) {
   const response = await callGateway({ operation: "listAuditLogs" }, actor);
   return response.logs ?? [];
+}
+
+export async function listRolePermissions(actor: AdminSessionUser) {
+  const response = await callGateway(
+    { operation: "listRolePermissions" },
+    actor,
+  );
+  return response.rolePermissions ?? [];
+}
+
+export async function updateRolePermissions(
+  role: AdminUserRole,
+  permissions: AdminPermission[],
+  actor: AdminSessionUser,
+) {
+  const response = await callGateway(
+    {
+      operation: "updateRolePermissions",
+      input: { role, permissions },
+    },
+    actor,
+  );
+  if (!response.rolePermission) {
+    throw new AdminControlError(
+      "The role permission set could not be loaded.",
+      500,
+    );
+  }
+  return response.rolePermission;
 }
 
 export async function getGameSettings(actor: AdminSessionUser) {

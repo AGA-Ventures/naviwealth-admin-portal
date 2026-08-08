@@ -26,12 +26,39 @@ type DatasetInput = {
 
 type AdminUserRole = "superadmin" | "admin" | "facilitator" | "viewer";
 type AdminUserStatus = "active" | "invited" | "suspended";
+type AdminPermission =
+  | "portal.view"
+  | "simulation.run"
+  | "datasets.reuse"
+  | "datasets.edit"
+  | "settings.edit"
+  | "users.manage"
+  | "audit.view";
+const ADMIN_ROLES: AdminUserRole[] = [
+  "superadmin",
+  "admin",
+  "facilitator",
+  "viewer",
+];
+const ADMIN_PERMISSIONS: AdminPermission[] = [
+  "portal.view",
+  "simulation.run",
+  "datasets.reuse",
+  "datasets.edit",
+  "settings.edit",
+  "users.manage",
+  "audit.view",
+];
 type AdminUserInput = {
   name?: unknown;
   email?: unknown;
   role?: unknown;
   status?: unknown;
   password?: unknown;
+};
+type RolePermissionInput = {
+  role?: unknown;
+  permissions?: unknown;
 };
 type GameSettingsInput = {
   defaultPlayers?: unknown;
@@ -50,6 +77,7 @@ type StockPriceUpdateInput = {
 };
 type EventRecordInput = {
   data?: unknown;
+  insertAfterRowNumber?: unknown;
 };
 
 type DatasetRow = {
@@ -90,6 +118,13 @@ type AdminActor = {
   email: string;
   role: AdminUserRole;
   status: AdminUserStatus;
+  permissions: AdminPermission[];
+};
+
+type RolePermissionRow = {
+  role: AdminUserRole;
+  permission: AdminPermission;
+  updated_at: string;
 };
 
 type AdminAuditLogRow = {
@@ -163,7 +198,8 @@ type RequestBody = {
     | AdminUserInput
     | GameSettingsInput
     | StockPriceUpdateInput
-    | EventRecordInput;
+    | EventRecordInput
+    | RolePermissionInput;
 };
 
 class GatewayError extends Error {
@@ -221,10 +257,19 @@ Deno.serve(async (request) => {
     switch (operation) {
       case "list":
         return json({ datasets: await listDatasets(client) });
-      case "get":
+      case "get": {
+        const datasetId = id(body.id);
+        const [datasetRow, lastUpdatedBy] = await Promise.all([
+          findDataset(client, datasetId),
+          findDatasetLastEditor(client, datasetId),
+        ]);
         return json({
-          dataset: mapDataset(await findDataset(client, id(body.id))),
+          dataset: {
+            ...mapDataset(datasetRow),
+            lastUpdatedBy,
+          },
         });
+      }
       case "create": {
         const dataset = mapDataset(
           await createDataset(client, (body.input ?? {}) as DatasetInput),
@@ -358,6 +403,28 @@ Deno.serve(async (request) => {
         });
         return json({ user });
       }
+      case "listRolePermissions":
+        return json({ rolePermissions: await listRolePermissions(client) });
+      case "updateRolePermissions": {
+        const input = (body.input ?? {}) as RolePermissionInput;
+        const role = parseAdminUserRole(input.role);
+        const before = await rolePermissionConfig(client, role);
+        const rolePermission = await replaceRolePermissions(
+          client,
+          actor,
+          role,
+          input.permissions,
+        );
+        await writeAudit(client, actor, {
+          action: "admin_role.permissions.update",
+          resourceType: "admin_role",
+          resourceId: role,
+          summary: `Updated ${role} permissions.`,
+          beforeData: before,
+          afterData: rolePermission,
+        });
+        return json({ rolePermission });
+      }
       case "listAuditLogs":
         return json({ logs: await listAuditLogs(client) });
       case "getGameSettings":
@@ -414,6 +481,26 @@ Deno.serve(async (request) => {
         return json({
           records: await listEventRecords(client, id(body.id)),
         });
+      case "createEventRecord": {
+        const datasetId = id(body.id);
+        const result = await createEventRecord(
+          client,
+          datasetId,
+          (body.input ?? {}) as EventRecordInput,
+        );
+        await writeAudit(client, actor, {
+          action: "event_record.create",
+          resourceType: "event_record",
+          resourceId: String(result.record.id),
+          summary: `Added event row ${result.record.rowNumber}.`,
+          afterData: result.record.data,
+          metadata: {
+            datasetId,
+            insertedAfterRowNumber: result.insertedAfterRowNumber,
+          },
+        });
+        return json({ record: result.record }, 201);
+      }
       case "updateEventRecord": {
         const result = await updateEventRecord(
           client,
@@ -431,6 +518,26 @@ Deno.serve(async (request) => {
         });
         return json({ record: result.record });
       }
+      case "deleteEventRecord": {
+        const deletedRecord = await deleteEventRecord(
+          client,
+          eventRecordId(body.id),
+        );
+        await writeAudit(client, actor, {
+          action: "event_record.delete",
+          resourceType: "event_record",
+          resourceId: String(deletedRecord.id),
+          summary: `Removed event row ${deletedRecord.rowNumber}: ${eventRecordAuditTitle(deletedRecord.data)}.`,
+          beforeData: deletedRecord.data,
+          metadata: {
+            datasetId: deletedRecord.datasetId,
+            age: deletedRecord.data.Age ?? "",
+            ageSet: deletedRecord.data["Age Set"] ?? "",
+            type: deletedRecord.data.Type ?? "",
+          },
+        });
+        return json({ deletedRecord });
+      }
       default:
         throw new GatewayError("Unsupported gateway operation.", 400);
     }
@@ -444,21 +551,14 @@ Deno.serve(async (request) => {
 });
 
 function createAdminClient() {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const secretKeys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
-  const secretKey =
-    secretKeys.default ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!supabaseUrl || !secretKey) {
-    throw new GatewayError("Database service is not configured.", 503);
-  }
+  const { supabaseUrl, secretKey } = authServiceConfig();
 
   return createClient(supabaseUrl, secretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
-function createUserClient(accessToken: string) {
+function authServiceConfig() {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const secretKeys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
   const secretKey =
@@ -468,14 +568,7 @@ function createUserClient(accessToken: string) {
     throw new GatewayError("Database service is not configured.", 503);
   }
 
-  return createClient(supabaseUrl, secretKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
+  return { supabaseUrl: supabaseUrl.replace(/\/+$/, ""), secretKey };
 }
 
 async function loginAdmin(
@@ -516,7 +609,7 @@ async function loginAdmin(
   }
 
   row = await markAdminActive(client, row.id);
-  return mapAuthSession(data.session, row);
+  return mapAuthSession(client, data.session, row);
 }
 
 async function refreshAdminSession(
@@ -532,7 +625,7 @@ async function refreshAdminSession(
     throw new GatewayError("Your session has expired. Sign in again.", 401);
   }
   const row = await findActiveAdminByAuthId(client, data.user.id);
-  return mapAuthSession(data.session, row);
+  return mapAuthSession(client, data.session, row);
 }
 
 async function getAdminSession(
@@ -546,6 +639,7 @@ async function getAdminSession(
     throw new GatewayError("Sign in is required.", 401);
   }
   return mapAdminSessionUser(
+    client,
     await findActiveAdminByAuthId(client, data.user.id),
   );
 }
@@ -574,16 +668,39 @@ async function changeAdminPassword(
   }
   const row = await findActiveAdminByAuthId(client, identity.user.id);
 
-  const userClient = createUserClient(accessToken);
-  const { data, error } = await userClient.auth.updateUser({
-    password: newPassword,
-    current_password: currentPassword,
-  });
-  if (error || !data.user || data.user.id !== identity.user.id) {
-    throw new GatewayError(
-      error?.message ?? "The current password is incorrect.",
-      error?.status ?? 400,
-    );
+  const passwordClient = createAdminClient();
+  const { data: passwordIdentity, error: passwordIdentityError } =
+    await passwordClient.auth.signInWithPassword({
+      email: row.email,
+      password: currentPassword,
+    });
+  if (
+    passwordIdentityError ||
+    !passwordIdentity.user ||
+    !passwordIdentity.session ||
+    passwordIdentity.user.id !== identity.user.id
+  ) {
+    throw new GatewayError("The current password is incorrect.", 400);
+  }
+
+  try {
+    const { data, error } = await passwordClient.auth.updateUser({
+      password: newPassword,
+      current_password: currentPassword,
+    });
+    if (error || !data.user || data.user.id !== identity.user.id) {
+      throw new GatewayError(
+        error?.message ?? "The password could not be updated.",
+        error?.status ?? 400,
+      );
+    }
+  } finally {
+    const { error: signOutError } = await passwordClient.auth.signOut({
+      scope: "local",
+    });
+    if (signOutError) {
+      console.warn("Could not revoke the password verification session.");
+    }
   }
 
   await writeAudit(client, {
@@ -593,6 +710,7 @@ async function changeAdminPassword(
     email: row.email,
     role: row.role,
     status: row.status,
+    permissions: await permissionsForRole(client, row.role),
   }, {
     action: "admin_user.password.update",
     resourceType: "admin_user",
@@ -655,49 +773,60 @@ async function requireAdminActor(
     email: row.email,
     role: row.role,
     status: row.status,
+    permissions: await permissionsForRole(client, row.role),
   };
 }
 
 function assertOperationPermission(actor: AdminActor, operation: string) {
-  const superadminOnly = new Set([
-    "listAdminUsers",
-    "createAdminUser",
-    "updateAdminUser",
-    "listAuditLogs",
-  ]);
-  const adminWrite = new Set([
-    "create",
-    "update",
-    "delete",
-    "duplicate",
-    "createCountryVariant",
-    "updateGameSettings",
-    "updateStockPrices",
-    "updateEventRecord",
-  ]);
-  const facilitatorWrite = new Set(["reuse"]);
-
-  if (superadminOnly.has(operation) && actor.role !== "superadmin") {
-    throw new GatewayError("Superadmin access is required.", 403);
-  }
-  if (
-    adminWrite.has(operation) &&
-    actor.role !== "superadmin" &&
-    actor.role !== "admin"
-  ) {
-    throw new GatewayError("Administrator edit access is required.", 403);
-  }
-  if (
-    facilitatorWrite.has(operation) &&
-    actor.role !== "superadmin" &&
-    actor.role !== "admin" &&
-    actor.role !== "facilitator"
-  ) {
-    throw new GatewayError("Facilitator access is required.", 403);
+  const permission = permissionForOperation(operation);
+  if (!actor.permissions.includes(permission)) {
+    throw new GatewayError(
+      `The ${permission} permission is required for this action.`,
+      403,
+    );
   }
 }
 
-function mapAuthSession(
+function permissionForOperation(operation: string): AdminPermission {
+  if (
+    operation === "listAdminUsers" ||
+    operation === "createAdminUser" ||
+    operation === "updateAdminUser" ||
+    operation === "listRolePermissions" ||
+    operation === "updateRolePermissions"
+  ) {
+    return "users.manage";
+  }
+  if (operation === "listAuditLogs") return "audit.view";
+  if (operation === "updateGameSettings") return "settings.edit";
+  if (operation === "reuse") return "datasets.reuse";
+  if (
+    operation === "create" ||
+    operation === "update" ||
+    operation === "delete" ||
+    operation === "duplicate" ||
+    operation === "createCountryVariant" ||
+    operation === "updateStockPrices" ||
+    operation === "createEventRecord" ||
+    operation === "updateEventRecord" ||
+    operation === "deleteEventRecord"
+  ) {
+    return "datasets.edit";
+  }
+  if (
+    operation === "list" ||
+    operation === "get" ||
+    operation === "getGameSettings" ||
+    operation === "getStockPriceSeries" ||
+    operation === "listEventRecords"
+  ) {
+    return "portal.view";
+  }
+  throw new GatewayError("Unsupported gateway operation.", 400);
+}
+
+async function mapAuthSession(
+  client: SupabaseClient,
   session: {
     access_token: string;
     refresh_token: string;
@@ -711,11 +840,14 @@ function mapAuthSession(
     refreshToken: session.refresh_token,
     expiresAt:
       session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
-    user: mapAdminSessionUser(row),
+    user: await mapAdminSessionUser(client, row),
   };
 }
 
-function mapAdminSessionUser(row: AdminUserRow) {
+async function mapAdminSessionUser(
+  client: SupabaseClient,
+  row: AdminUserRow,
+) {
   return {
     id: row.id,
     authUserId: row.auth_user_id,
@@ -723,35 +855,25 @@ function mapAdminSessionUser(row: AdminUserRow) {
     email: row.email,
     role: row.role,
     status: row.status,
-    permissions: permissionsForRole(row.role),
+    permissions: await permissionsForRole(client, row.role),
   };
 }
 
-function permissionsForRole(role: AdminUserRole) {
-  if (role === "superadmin") {
-    return [
-      "portal.view",
-      "simulation.run",
-      "datasets.reuse",
-      "datasets.edit",
-      "settings.edit",
-      "users.manage",
-      "audit.view",
-    ];
-  }
-  if (role === "admin") {
-    return [
-      "portal.view",
-      "simulation.run",
-      "datasets.reuse",
-      "datasets.edit",
-      "settings.edit",
-    ];
-  }
-  if (role === "facilitator") {
-    return ["portal.view", "simulation.run", "datasets.reuse"];
-  }
-  return ["portal.view"];
+async function permissionsForRole(
+  client: SupabaseClient,
+  role: AdminUserRole,
+): Promise<AdminPermission[]> {
+  const { data, error } = await client
+    .from("admin_role_permissions")
+    .select("permission")
+    .eq("role", role);
+  if (error) throw databaseError(error);
+  const granted = new Set(
+    ((data ?? []) as Array<{ permission: AdminPermission }>).map(
+      (row) => row.permission,
+    ),
+  );
+  return ADMIN_PERMISSIONS.filter((permission) => granted.has(permission));
 }
 
 async function listDatasets(client: SupabaseClient) {
@@ -1094,6 +1216,58 @@ async function updateAdminUser(
   return data as AdminUserRow;
 }
 
+async function listRolePermissions(client: SupabaseClient) {
+  const { data, error } = await client
+    .from("admin_role_permissions")
+    .select("role, permission, updated_at");
+  if (error) throw databaseError(error);
+
+  const rows = (data ?? []) as RolePermissionRow[];
+  return ADMIN_ROLES.map((role) => {
+    const matching = rows.filter((row) => row.role === role);
+    const granted = new Set(matching.map((row) => row.permission));
+    return {
+      role,
+      permissions: ADMIN_PERMISSIONS.filter((permission) =>
+        granted.has(permission),
+      ),
+      updatedAt: matching.reduce<string | null>(
+        (latest, row) =>
+          !latest || row.updated_at > latest ? row.updated_at : latest,
+        null,
+      ),
+    };
+  });
+}
+
+async function rolePermissionConfig(
+  client: SupabaseClient,
+  role: AdminUserRole,
+) {
+  const configs = await listRolePermissions(client);
+  const config = configs.find((candidate) => candidate.role === role);
+  if (!config) {
+    throw new GatewayError("Role permissions could not be loaded.", 500);
+  }
+  return config;
+}
+
+async function replaceRolePermissions(
+  client: SupabaseClient,
+  actor: AdminActor,
+  role: AdminUserRole,
+  value: unknown,
+) {
+  const permissions = sanitizeAdminPermissions(role, value);
+  const { error } = await client.rpc("replace_admin_role_permissions", {
+    target_role: role,
+    target_permissions: permissions,
+    actor_admin_user_id: actor.id,
+  });
+  if (error) throw databaseError(error);
+  return rolePermissionConfig(client, role);
+}
+
 async function listAuditLogs(client: SupabaseClient) {
   const { data, error } = await client
     .from("admin_audit_logs")
@@ -1102,6 +1276,51 @@ async function listAuditLogs(client: SupabaseClient) {
     .limit(100);
   if (error) throw databaseError(error);
   return ((data ?? []) as AdminAuditLogRow[]).map(mapAuditLog);
+}
+
+async function findDatasetLastEditor(
+  client: SupabaseClient,
+  datasetId: number,
+) {
+  const columns =
+    "actor_name,actor_email,actor_role,action,created_at,resource_type,resource_id,metadata";
+  const [datasetAudit, eventAudit] = await Promise.all([
+    client
+      .from("admin_audit_logs")
+      .select(columns)
+      .eq("resource_type", "dataset")
+      .eq("resource_id", String(datasetId))
+      .order("created_at", { ascending: false })
+      .limit(1),
+    client
+      .from("admin_audit_logs")
+      .select(columns)
+      .contains("metadata", { datasetId })
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  if (datasetAudit.error) throw databaseError(datasetAudit.error);
+  if (eventAudit.error) throw databaseError(eventAudit.error);
+
+  const candidates = [
+    ...(datasetAudit.data ?? []),
+    ...(eventAudit.data ?? []),
+  ] as Pick<
+    AdminAuditLogRow,
+    "actor_name" | "actor_email" | "actor_role" | "action" | "created_at"
+  >[];
+  const latest = candidates.sort((left, right) =>
+    right.created_at.localeCompare(left.created_at),
+  )[0];
+  return latest
+    ? {
+        name: latest.actor_name,
+        email: latest.actor_email,
+        role: latest.actor_role,
+        action: latest.action,
+        at: latest.created_at,
+      }
+    : null;
 }
 
 type AuditInput = {
@@ -1319,6 +1538,11 @@ async function updateEventRecord(
     .select("*")
     .single();
   if (error) throw databaseError(error);
+  const { error: datasetError } = await client
+    .from("datasets")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", current.dataset_id);
+  if (datasetError) throw databaseError(datasetError);
   const beforeData: Record<string, string> = {};
   const afterData: Record<string, string> = {};
   for (const key of Object.keys(eventData)) {
@@ -1332,6 +1556,218 @@ async function updateEventRecord(
     beforeData,
     afterData,
   };
+}
+
+async function deleteEventRecord(
+  client: SupabaseClient,
+  recordId: number,
+) {
+  const current = await findEventRecord(client, recordId);
+  const { data: datasetId, error } = await client.rpc(
+    "delete_event_record_row",
+    { p_record_id: recordId },
+  );
+  if (error) throw databaseError(error);
+  if (Number(datasetId) !== current.dataset_id) {
+    throw new GatewayError("The event row could not be removed.", 500);
+  }
+  return mapEventRecord(current);
+}
+
+async function createEventRecord(
+  client: SupabaseClient,
+  datasetId: number,
+  input: EventRecordInput,
+) {
+  const dataset = await findDataset(client, datasetId);
+  if (dataset.kind !== "event") {
+    throw new GatewayError("This package is not an event dataset.", 400);
+  }
+
+  boundedInteger(
+    input.insertAfterRowNumber,
+    "Event row insertion point",
+    0,
+    499,
+  );
+  const { data: storedRecords, error: recordsError } = await client
+    .from("event_records")
+    .select("*")
+    .eq("dataset_id", datasetId)
+    .order("row_number", { ascending: true });
+  if (recordsError) throw databaseError(recordsError);
+  const records = (storedRecords ?? []) as EventRecordRow[];
+  if (records.length === 0) {
+    throw new GatewayError(
+      "Import at least one event before adding an Age Set row.",
+      409,
+    );
+  }
+
+  const templateRecord = records[0];
+  const eventData = sanitizeEventRecordData(input.data, templateRecord.data);
+  const targetAge = eventRecordAge(eventData);
+  const targetSet = eventRecordAgeSet(eventData);
+  const eventType = canonicalEventType(eventData.Type);
+  if (!eventType) {
+    throw new GatewayError(
+      "Choose Market, Expenses, Cash Flow, or Capital Gain.",
+      400,
+    );
+  }
+  eventData.Type = eventType;
+
+  for (const field of ["Screen Set", "Set Within Age"]) {
+    if (eventData[field]?.trim() !== String(targetSet)) {
+      throw new GatewayError(
+        `The new row must remain in Age Set ${targetAge} - ${targetSet}.`,
+        400,
+      );
+    }
+  }
+  if (
+    eventData["Age Set"]?.trim() !== `${targetAge} - ${targetSet}`
+  ) {
+    throw new GatewayError(
+      `The new row must remain in Age Set ${targetAge} - ${targetSet}.`,
+      400,
+    );
+  }
+
+  const targetRecords = records.filter(
+    (record) =>
+      eventRecordAgeOrNull(record.data) === targetAge &&
+      eventRecordAgeSetOrNull(record.data) === targetSet,
+  );
+  let insertAfterRowNumber: number;
+  if (targetRecords.length === 0) {
+    const previousRecord = records
+      .filter((record) => eventRecordComesBefore(record, targetAge, targetSet))
+      .at(-1);
+    insertAfterRowNumber = previousRecord?.row_number ?? 0;
+  } else {
+    if (targetRecords.length !== 1) {
+      throw new GatewayError(
+        "This Age Set already has its allowed event rows.",
+        409,
+      );
+    }
+    const requiredType = pairedEventType(targetRecords[0].data.Type);
+    if (!requiredType) {
+      throw new GatewayError(
+        "Only an incomplete Cash Flow or Capital Gain pair can add a second row.",
+        409,
+      );
+    }
+    if (eventType !== requiredType) {
+      throw new GatewayError(
+        `This Age Set requires a ${requiredType} row.`,
+        400,
+      );
+    }
+    insertAfterRowNumber = targetRecords[0].row_number;
+  }
+
+  const sourceTemplate =
+    targetRecords.at(-1) ??
+    records.find((record) => record.row_number > insertAfterRowNumber) ??
+    records.at(-1) ??
+    templateRecord;
+  const { data: createdId, error } = await client.rpc(
+    "create_event_record_row",
+    {
+      p_dataset_id: datasetId,
+      p_insert_after_row_number: insertAfterRowNumber,
+      p_source_file: sourceTemplate.source_file,
+      p_data: eventData,
+    },
+  );
+  if (error) throw databaseError(error);
+
+  const recordId = Number(createdId);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    throw new GatewayError("The new event row could not be loaded.", 500);
+  }
+  return {
+    record: mapEventRecord(await findEventRecord(client, recordId)),
+    insertedAfterRowNumber: insertAfterRowNumber,
+  };
+}
+
+function pairedEventType(type: string | undefined) {
+  const normalized = type?.trim().toLowerCase();
+  if (normalized === "cash flow" || normalized === "cashflow") {
+    return "Capital Gain";
+  }
+  if (normalized === "capital gain") return "Cash Flow";
+  return "";
+}
+
+function eventRecordAuditTitle(data: Record<string, string>) {
+  return (
+    data["Title (ENG)"]?.trim() ||
+    data["Title （CN）"]?.trim() ||
+    data.Title?.trim() ||
+    "Untitled event"
+  );
+}
+
+function canonicalEventType(type: string | undefined) {
+  const normalized = type?.trim().toLowerCase();
+  if (normalized === "market") return "Market";
+  if (normalized === "expense" || normalized === "expenses") {
+    return "Expenses";
+  }
+  if (normalized === "cash flow" || normalized === "cashflow") {
+    return "Cash Flow";
+  }
+  if (normalized === "capital gain") return "Capital Gain";
+  return "";
+}
+
+function eventRecordAge(data: Record<string, string>) {
+  const age = eventRecordAgeOrNull(data);
+  if (age === null || age < 1 || age > 120) {
+    throw new GatewayError("Choose a valid event age.", 400);
+  }
+  return age;
+}
+
+function eventRecordAgeOrNull(data: Record<string, string>) {
+  const age = Number(data.Age?.trim());
+  return Number.isInteger(age) ? age : null;
+}
+
+function eventRecordAgeSet(data: Record<string, string>) {
+  const setNumber = eventRecordAgeSetOrNull(data);
+  if (setNumber === null) {
+    throw new GatewayError("Choose an Age Set from 1 to 4.", 400);
+  }
+  return setNumber;
+}
+
+function eventRecordAgeSetOrNull(data: Record<string, string>) {
+  const explicit = data["Age Set"]?.trim().match(/(?:^|\s*-\s*)([1-4])$/)?.[1];
+  const candidate =
+    explicit ?? data["Set Within Age"]?.trim() ?? data["Screen Set"]?.trim();
+  const setNumber = Number(candidate);
+  return Number.isInteger(setNumber) && setNumber >= 1 && setNumber <= 4
+    ? setNumber
+    : null;
+}
+
+function eventRecordComesBefore(
+  record: EventRecordRow,
+  targetAge: number,
+  targetSet: number,
+) {
+  const age = eventRecordAgeOrNull(record.data);
+  const setNumber = eventRecordAgeSetOrNull(record.data);
+  return (
+    age !== null &&
+    setNumber !== null &&
+    (age < targetAge || (age === targetAge && setNumber < targetSet))
+  );
 }
 
 function mapDataset(row: DatasetRow) {
@@ -1571,6 +2007,48 @@ function parseAdminUserRole(value: unknown): AdminUserRole {
   throw new GatewayError("Select a valid user role.", 400);
 }
 
+function sanitizeAdminPermissions(
+  role: AdminUserRole,
+  value: unknown,
+): AdminPermission[] {
+  if (!Array.isArray(value)) {
+    throw new GatewayError("Permissions must be provided as a list.", 400);
+  }
+  const requested = new Set<AdminPermission>();
+  for (const candidate of value) {
+    if (
+      typeof candidate !== "string" ||
+      !ADMIN_PERMISSIONS.includes(candidate as AdminPermission)
+    ) {
+      throw new GatewayError("Select only supported permissions.", 400);
+    }
+    requested.add(candidate as AdminPermission);
+  }
+
+  if (!requested.has("portal.view")) {
+    throw new GatewayError("Portal access is required for every role.", 400);
+  }
+  if (
+    role === "superadmin" &&
+    (!requested.has("users.manage") || !requested.has("audit.view"))
+  ) {
+    throw new GatewayError(
+      "Superadmins must retain user management and audit access.",
+      400,
+    );
+  }
+  if (
+    role !== "superadmin" &&
+    (requested.has("users.manage") || requested.has("audit.view"))
+  ) {
+    throw new GatewayError(
+      "User management and audit access are reserved for superadmins.",
+      400,
+    );
+  }
+  return ADMIN_PERMISSIONS.filter((permission) => requested.has(permission));
+}
+
 function cleanPassword(value: unknown) {
   const password = typeof value === "string" ? value : "";
   if (password.length < 12 || password.length > 128) {
@@ -1744,6 +2222,16 @@ function availableCopyName(sourceName: string, usedNames: Set<string>) {
 }
 
 function databaseError(error: { code?: string; message?: string }) {
+  if (
+    error.message?.includes("Portal access is required") ||
+    error.message?.includes("Superadmins must retain") ||
+    error.message?.includes("reserved for superadmins") ||
+    error.message?.includes("Select only supported permissions") ||
+    error.message?.includes("Select at least one permission") ||
+    error.message?.includes("Select a valid administrator role")
+  ) {
+    return new GatewayError(error.message.split("\n")[0], 400);
+  }
   if (error.message?.includes("already has a variant")) {
     return new GatewayError(
       "This dataset family already has a variant for that country.",

@@ -47,6 +47,58 @@ test("enforces four roles at the API and database gateway", async () => {
   assert.match(gateway, /requireAdminActor/);
 });
 
+test("lets superadmins edit centrally enforced permissions for every role", async () => {
+  const [migration, hardening, gateway, route, controls, userControl] =
+    await Promise.all([
+      source(
+        "supabase/migrations/20260803082822_editable_role_permissions.sql",
+      ),
+      source(
+        "supabase/migrations/20260803084059_harden_role_permission_editor.sql",
+      ),
+      source("supabase/functions/naviwealth-datasets/index.ts"),
+      source("app/api/role-permissions/route.ts"),
+      source("db/admin-controls.ts"),
+      source("app/admin/users/UserControl.tsx"),
+    ]);
+
+  assert.match(
+    migration,
+    /create table if not exists public\.admin_role_permissions/i,
+  );
+  assert.match(migration, /enable row level security/i);
+  assert.match(
+    migration,
+    /revoke all on table public\.admin_role_permissions from anon, authenticated/i,
+  );
+  assert.match(migration, /security invoker/i);
+  assert.match(migration, /replace_admin_role_permissions/i);
+  assert.match(migration, /Portal access is required for every role/i);
+  assert.match(
+    migration,
+    /Superadmins must retain user management and audit access/i,
+  );
+  assert.match(
+    hardening,
+    /User management and audit access are reserved for superadmins/i,
+  );
+
+  assert.match(gateway, /\.from\("admin_role_permissions"\)/);
+  assert.match(gateway, /actor\.permissions\.includes\(permission\)/);
+  assert.match(gateway, /case "updateRolePermissions"/);
+  assert.match(gateway, /admin_role\.permissions\.update/);
+  assert.match(gateway, /await permissionsForRole\(client, row\.role\)/);
+
+  assert.match(route, /users\.manage/);
+  assert.match(route, /export async function PATCH/);
+  assert.match(controls, /operation: "updateRolePermissions"/);
+  assert.match(userControl, /Edit role permissions/);
+  assert.match(userControl, /role-permission-list/);
+  assert.match(userControl, /isRequiredPermission/);
+  assert.match(userControl, /Superadmin only/);
+  assert.match(userControl, /Save \$\{roleLabels\[editingRole\]\}/);
+});
+
 test("records every privileged change for superadmin review", async () => {
   const [migration, gateway, auditRoute, userControl] = await Promise.all([
     source("supabase/migrations/20260731141044_admin_auth_rbac_audit.sql"),
@@ -100,9 +152,15 @@ test("lets every signed-in administrator manage their own login securely", async
   assert.match(passwordRoute, /requestAccessToken/);
   assert.match(session, /export function requestAccessToken/);
   assert.match(authStore, /operation: "changeAdminPassword"/);
+  assert.match(
+    gateway,
+    /passwordClient\.auth\.signInWithPassword\([\s\S]*?email: row\.email,[\s\S]*?password: currentPassword/,
+  );
   assert.match(gateway, /current_password: currentPassword/);
   assert.match(gateway, /admin_user\.password\.update/);
-  assert.match(gateway, /Authorization: `Bearer \$\{accessToken\}`/);
+  assert.match(gateway, /passwordClient\.auth\.updateUser/);
+  assert.match(gateway, /passwordClient\.auth\.signOut\(\{[\s\S]*?scope: "local"/);
+  assert.doesNotMatch(gateway, /userClient\.auth\.updateUser/);
 });
 
 test("keeps user sessions isolated from the service-role database client", async () => {

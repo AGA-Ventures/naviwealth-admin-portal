@@ -1,5 +1,7 @@
 import {
+  deleteEventRecord,
   EventRecordStoreError,
+  listEventRecords,
   type EventRecordData,
   updateEventRecord,
 } from "@/db/event-records";
@@ -36,6 +38,24 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
+export async function DELETE(request: Request, context: RouteContext) {
+  const user = await getDatasetRequestUser(request);
+  if (!user) return unauthorizedResponse();
+  if (!hasRequestPermission(user, "datasets.edit")) {
+    return forbiddenResponse("Administrator edit access is required.");
+  }
+
+  try {
+    const { id: rawId } = await context.params;
+    const recordId = positiveId(rawId);
+    const deletedRecord = await deleteEventRecord(recordId, user);
+    const records = await listEventRecords(deletedRecord.datasetId, user);
+    return Response.json({ deletedRecord, records });
+  } catch (error) {
+    return eventStoreErrorResponse(error);
+  }
+}
+
 function positiveId(value: unknown) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -49,7 +69,7 @@ function eventStoreErrorResponse(error: unknown) {
     return Response.json({ error: error.message }, { status: error.status });
   }
   return Response.json(
-    { error: "The event record could not be updated." },
+    { error: "The event record request could not be completed." },
     { status: 500 },
   );
 }

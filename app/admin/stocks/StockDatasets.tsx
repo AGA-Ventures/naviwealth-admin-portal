@@ -815,10 +815,23 @@ function Sparkline({
   values: number[];
   positive: boolean;
 }) {
+  const finiteValues = values.map((value) =>
+    Number.isFinite(value) ? value : 0,
+  );
+  const minimum = Math.min(...finiteValues);
+  const maximum = Math.max(...finiteValues);
+  const range = maximum - minimum;
+  const normalizedValues = finiteValues.map((value) =>
+    range === 0 ? 50 : 12 + ((value - minimum) / range) * 88,
+  );
+
   return (
-    <span className={`stock-sparkline ${positive ? "up" : "down"}`}>
-      {values.map((value, index) => (
-        <i key={`${value}-${index}`} style={{ height: `${value}%` }} />
+    <span
+      className={`stock-sparkline ${positive ? "up" : "down"}`}
+      aria-hidden="true"
+    >
+      {normalizedValues.map((height, index) => (
+        <i key={index} style={{ height: `${height}%` }} />
       ))}
     </span>
   );
